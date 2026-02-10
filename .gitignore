@@ -1,0 +1,13 @@
+# 项目排除路径
+/.gradle/
+/build/
+/compiler/build/
+/compiler/build/classes/kotlin/main/
+/compose-stubs/build/
+/compose-stubs/build/classes/kotlin/main/
+/example/build/
+/example/build/classes/kotlin/main/
+/mixin-lib/build/
+/mixin-lib/build/classes/kotlin/main/
+/plugin/build/
+/plugin/build/classes/kotlin/main/

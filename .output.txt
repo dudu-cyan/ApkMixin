@@ -1,0 +1,320 @@
+Initialized native services in: C:\Users\Admin\.gradle\native
+Initialized jansi services in: C:\Users\Admin\.gradle\native
+The client will now receive all logging from the daemon (pid: 8464). The daemon log file: C:\Users\Admin\.gradle\daemon\8.14.3\daemon-8464.out.log
+Starting 86th build in daemon [uptime: 1 hrs 51 mins 6.43 secs, performance: 96%, GC rate: 0.01/s, heap usage: 58% of 512 MiB, non-heap usage: 70% of 384 MiB]
+Using 8 worker leases.
+Now considering [C:\Users\Admin\IdeaProjects\ApkMixin] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'C:\Users\Admin\IdeaProjects\ApkMixin\settings.gradle.kts'.
+Projects loaded. Root project using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\build.gradle.kts'.
+Included projects: [root project 'ApkMixin', project ':compiler', project ':compose-stubs', project ':example', project ':mixin-lib', project ':plugin']
+> Configure project :
+Evaluating root project 'ApkMixin' using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.jvm', version: '1.9.22', apply: false]
+Resolved plugin [id: 'com.android.application', version: '8.2.2', apply: false]
+Resolved plugin [id: 'com.android.library', version: '8.2.2', apply: false]
+> Configure project :compiler
+Evaluating project ':compiler' using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\compiler\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.jvm']
+Resolved plugin [id: 'org.gradle.maven-publish']
+Using Kotlin Gradle Plugin gradle82 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+> Configure project :compose-stubs
+Evaluating project ':compose-stubs' using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\compose-stubs\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.jvm']
+Using Kotlin Gradle Plugin gradle82 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+> Configure project :example
+Evaluating project ':example' using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\example\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.jvm']
+Resolved plugin [id: 'com.example.apk-patcher', version: '1.0.0']
+Using Kotlin Gradle Plugin gradle82 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+> Configure project :mixin-lib
+Evaluating project ':mixin-lib' using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\mixin-lib\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.jvm']
+Resolved plugin [id: 'org.gradle.maven-publish']
+Using Kotlin Gradle Plugin gradle82 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+> Configure project :plugin
+Evaluating project ':plugin' using build file 'C:\Users\Admin\IdeaProjects\ApkMixin\plugin\build.gradle.kts'.
+Resolved plugin [id: 'org.gradle.kotlin.kotlin-dsl', version: '5.2.0']
+Resolved plugin [id: 'org.gradle.maven-publish']
+Using Kotlin Gradle Plugin gradle82 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+WARNING: Unsupported Kotlin plugin version.
+The `embedded-kotlin` and `kotlin-dsl` plugins rely on features of Kotlin `2.0.21` that might work differently than in the requested version `1.9.22`.
+file or directory 'C:\Users\Admin\IdeaProjects\ApkMixin\plugin\src\main\java', not found
+All projects evaluated.
+Task path ':example:patchApk' matched project ':example'
+Task name matched 'patchApk'
+Selected primary task 'patchApk' from project :example
+Tasks to be executed: [task ':compose-stubs:checkKotlinGradlePluginConfigurationErrors', task ':compose-stubs:compileKotlin', task ':compose-stubs:compileJava', task ':compose-stubs:processResources', task ':compose-stubs:classes', task ':compose-stubs:jar', task ':example:checkKotlinGradlePluginConfigurationErrors', task ':mixin-lib:checkKotlinGradlePluginConfigurationErrors', task ':mixin-lib:compileKotlin', task ':mixin-lib:compileJava', task ':mixin-lib:processResources', task ':mixin-lib:classes', task ':mixin-lib:jar', task ':example:compileKotlin', task ':example:compileJava', task ':example:processResources', task ':example:classes', task ':example:compileTestKotlin', task ':example:generateTestApk', task ':example:patchApk']
+Tasks that were excluded: []
+Resolve mutations for :compose-stubs:checkKotlinGradlePluginConfigurationErrors (Thread[#6608,included builds,5,main]) started.
+:compose-stubs:checkKotlinGradlePluginConfigurationErrors (Thread[#6608,included builds,5,main]) started.
+> Task :compose-stubs:checkKotlinGradlePluginConfigurationErrors
+Caching disabled for task ':compose-stubs:checkKotlinGradlePluginConfigurationErrors' because:
+  Build cache is disabled
+Task ':compose-stubs:checkKotlinGradlePluginConfigurationErrors' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :compose-stubs:compileKotlin (Thread[#6608,included builds,5,main]) started.
+:compose-stubs:compileKotlin (Thread[#6608,included builds,5,main]) started.
+> Task :compose-stubs:compileKotlin UP-TO-DATE
+Caching disabled for task ':compose-stubs:compileKotlin' because:
+  Build cache is disabled
+Skipping task ':compose-stubs:compileKotlin' as it is up-to-date.
+Resolve mutations for :compose-stubs:compileJava (Thread[#6608,included builds,5,main]) started.
+:compose-stubs:compileJava (Thread[#6608,included builds,5,main]) started.
+> Task :compose-stubs:compileJava NO-SOURCE
+Skipping task ':compose-stubs:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :compose-stubs:processResources (Thread[#6608,included builds,5,main]) started.
+:compose-stubs:processResources (Thread[#6608,included builds,5,main]) started.
+> Task :compose-stubs:processResources NO-SOURCE
+Skipping task ':compose-stubs:processResources' as it has no source files and no previous output files.
+Resolve mutations for :compose-stubs:classes (Thread[#6608,included builds,5,main]) started.
+:compose-stubs:classes (Thread[#6608,included builds,5,main]) started.
+> Task :compose-stubs:classes UP-TO-DATE
+Skipping task ':compose-stubs:classes' as it has no actions.
+Resolve mutations for :compose-stubs:jar (Thread[#6608,included builds,5,main]) started.
+:compose-stubs:jar (Thread[#6608,included builds,5,main]) started.
+> Task :compose-stubs:jar UP-TO-DATE
+Caching disabled for task ':compose-stubs:jar' because:
+  Build cache is disabled
+  Not worth caching
+Skipping task ':compose-stubs:jar' as it is up-to-date.
+work action resolve compose-stubs.jar (project :compose-stubs) (Thread[#6608,included builds,5,main]) started.
+Resolve mutations for :example:checkKotlinGradlePluginConfigurationErrors (Thread[#6608,included builds,5,main]) started.
+:example:checkKotlinGradlePluginConfigurationErrors (Thread[#6608,included builds,5,main]) started.
+> Task :example:checkKotlinGradlePluginConfigurationErrors
+Caching disabled for task ':example:checkKotlinGradlePluginConfigurationErrors' because:
+  Build cache is disabled
+Task ':example:checkKotlinGradlePluginConfigurationErrors' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :mixin-lib:checkKotlinGradlePluginConfigurationErrors (Thread[#6608,included builds,5,main]) started.
+:mixin-lib:checkKotlinGradlePluginConfigurationErrors (Thread[#6608,included builds,5,main]) started.
+> Task :mixin-lib:checkKotlinGradlePluginConfigurationErrors
+Caching disabled for task ':mixin-lib:checkKotlinGradlePluginConfigurationErrors' because:
+  Build cache is disabled
+Task ':mixin-lib:checkKotlinGradlePluginConfigurationErrors' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :mixin-lib:compileKotlin (Thread[#6608,included builds,5,main]) started.
+:mixin-lib:compileKotlin (Thread[#6608,included builds,5,main]) started.
+> Task :mixin-lib:compileKotlin UP-TO-DATE
+Caching disabled for task ':mixin-lib:compileKotlin' because:
+  Build cache is disabled
+Skipping task ':mixin-lib:compileKotlin' as it is up-to-date.
+Resolve mutations for :mixin-lib:compileJava (Thread[#6608,included builds,5,main]) started.
+:mixin-lib:compileJava (Thread[#6608,included builds,5,main]) started.
+> Task :mixin-lib:compileJava NO-SOURCE
+Skipping task ':mixin-lib:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :mixin-lib:processResources (Thread[#6608,included builds,5,main]) started.
+:mixin-lib:processResources (Thread[#6608,included builds,5,main]) started.
+> Task :mixin-lib:processResources NO-SOURCE
+Skipping task ':mixin-lib:processResources' as it has no source files and no previous output files.
+Resolve mutations for :mixin-lib:classes (Thread[#6608,included builds,5,main]) started.
+:mixin-lib:classes (Thread[#6608,included builds,5,main]) started.
+> Task :mixin-lib:classes UP-TO-DATE
+Skipping task ':mixin-lib:classes' as it has no actions.
+Resolve mutations for :mixin-lib:jar (Thread[#6608,included builds,5,main]) started.
+:mixin-lib:jar (Thread[#6608,included builds,5,main]) started.
+> Task :mixin-lib:jar UP-TO-DATE
+Caching disabled for task ':mixin-lib:jar' because:
+  Build cache is disabled
+  Not worth caching
+Skipping task ':mixin-lib:jar' as it is up-to-date.
+work action resolve mixin-lib-1.0.0.jar (project :mixin-lib) (Thread[#6608,included builds,5,main]) started.
+Resolve mutations for :example:compileKotlin (Thread[#6608,included builds,5,main]) started.
+:example:compileKotlin (Thread[#6608,included builds,5,main]) started.
+> Task :example:compileKotlin UP-TO-DATE
+Caching disabled for task ':example:compileKotlin' because:
+  Build cache is disabled
+Skipping task ':example:compileKotlin' as it is up-to-date.
+Resolve mutations for :example:compileJava (Thread[#6608,included builds,5,main]) started.
+:example:compileJava (Thread[#6608,included builds,5,main]) started.
+> Task :example:compileJava NO-SOURCE
+Skipping task ':example:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :example:processResources (Thread[#6608,included builds,5,main]) started.
+:example:processResources (Thread[#6608,included builds,5,main]) started.
+> Task :example:processResources NO-SOURCE
+Skipping task ':example:processResources' as it has no source files and no previous output files.
+Resolve mutations for :example:classes (Thread[#6608,included builds,5,main]) started.
+:example:classes (Thread[#6608,included builds,5,main]) started.
+> Task :example:classes UP-TO-DATE
+Skipping task ':example:classes' as it has no actions.
+Resolve mutations for :example:compileTestKotlin (Thread[#6608,included builds,5,main]) started.
+:example:compileTestKotlin (Thread[#6608,included builds,5,main]) started.
+> Task :example:compileTestKotlin NO-SOURCE
+Skipping task ':example:compileTestKotlin' as it has no source files and no previous output files.
+Resolve mutations for :example:generateTestApk (Thread[#6608,included builds,5,main]) started.
+:example:generateTestApk (Thread[#6608,included builds,5,main]) started.
+> Task :example:generateTestApk
+Caching disabled for task ':example:generateTestApk' because:
+  Build cache is disabled
+Task ':example:generateTestApk' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Generated test.apk at C:\Users\Admin\IdeaProjects\ApkMixin\example\test.apk
+Resolve mutations for :example:patchApk (Thread[#6608,included builds,5,main]) started.
+:example:patchApk (Thread[#6608,included builds,5,main]) started.
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/ExecutorCoroutineDispatcher.class:
+Type `java.io.Closeable` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.ExecutorCoroutineDispatcher`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/jvm/internal/CallableReference.class:
+Type `java.io.Serializable` was not found, it is required for default or static interface methods desugaring of `kotlin.jvm.internal.CallableReference`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/EmptyIterator.class:
+Type `java.util.ListIterator` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.EmptyIterator`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/ranges/UIntProgression.class:
+Type `java.lang.Iterable` was not found, it is required for default or static interface methods desugaring of `kotlin.ranges.UIntProgression`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/builders/SerializedMap.class:
+Type `java.io.Externalizable` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.builders.SerializedMap`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/FileWalkDirection.class:
+Type `java.lang.Enum` was not found, it is required for default or static interface methods desugaring of `kotlin.io.FileWalkDirection`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractCollection.class:
+Type `java.util.Collection` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractCollection`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/scheduling/Task.class:
+Type `java.lang.Runnable` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.scheduling.Task`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\androidx.collection\collection\1.1.0\1f27220b47669781457de0d600849a5de0e89909\collection-1.1.0.jar:androidx/collection/MapCollections$ArrayIterator.class:
+Type `java.util.Iterator` was not found, it is required for default or static interface methods desugaring of `androidx.collection.MapCollections$ArrayIterator`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/time/ComparableTimeMark.class:
+Type `java.lang.Comparable` was not found, it is required for default or static interface methods desugaring of `kotlin.time.ComparableTimeMark`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/builders/MapBuilder.class:
+Type `java.util.Map` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.builders.MapBuilder`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/channels/ClosedReceiveChannelException.class:
+Type `java.util.NoSuchElementException` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.channels.ClosedReceiveChannelException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/reflect/TypeVariableImpl.class:
+Type `java.lang.reflect.TypeVariable` was not found, it is required for default or static interface methods desugaring of `kotlin.reflect.TypeVariableImpl`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/reflect/TypeImpl.class:
+Type `java.lang.reflect.Type` was not found, it is required for default or static interface methods desugaring of `kotlin.reflect.TypeImpl`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\androidx.concurrent\concurrent-futures\1.1.0\50b7fb98350d5f42a4e49704b03278542293ba48\concurrent-futures-1.1.0.jar:androidx/concurrent/futures/AbstractResolvableFuture$Failure$1.class:
+Type `java.lang.Throwable` was not found, it is required for default or static interface methods desugaring of `androidx.concurrent.futures.AbstractResolvableFuture$Failure$1`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractMutableMap.class:
+Type `java.util.AbstractMap` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractMutableMap`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/encoding/EncodeOutputStream.class:
+Type `java.io.OutputStream` was not found, it is required for default or static interface methods desugaring of `kotlin.io.encoding.EncodeOutputStream`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractList.class:
+Type `java.util.List` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractList`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/unsigned/UArraysKt___UArraysJvmKt$asList$4.class:
+Type `java.util.RandomAccess` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.unsigned.UArraysKt___UArraysJvmKt$asList$4`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/reflect/ParameterizedTypeImpl.class:
+Type `java.lang.reflect.ParameterizedType` was not found, it is required for default or static interface methods desugaring of `kotlin.reflect.ParameterizedTypeImpl`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\androidx.collection\collection\1.1.0\1f27220b47669781457de0d600849a5de0e89909\collection-1.1.0.jar:androidx/collection/SparseArrayCompat.class:
+Type `java.lang.Cloneable` was not found, it is required for default or static interface methods desugaring of `androidx.collection.SparseArrayCompat`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/ExposingBufferByteArrayOutputStream.class:
+Type `java.io.ByteArrayOutputStream` was not found, it is required for default or static interface methods desugaring of `kotlin.io.ExposingBufferByteArrayOutputStream`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/channels/ClosedSendChannelException.class:
+Type `java.lang.IllegalStateException` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.channels.ClosedSendChannelException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/JobCancellationException.class:
+Type `java.util.concurrent.CancellationException` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.JobCancellationException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/scheduling/CoroutineScheduler$Worker.class:
+Type `java.lang.Thread` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.scheduling.CoroutineScheduler$Worker`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/comparisons/ComparisonsKt__ComparisonsKt.class:
+Type `java.util.Comparator` was not found, it is required for default or static interface methods desugaring of `kotlin.comparisons.ComparisonsKt__ComparisonsKt$$InternalSyntheticLambda$2$9169a9bfe73cfa85fa177d3e7a1ad50bafa51d9ed94cbd208249dacf679cea4b$0`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/debug/AgentPremain$DebugProbesTransformer.class:
+Type `java.lang.instrument.ClassFileTransformer` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.debug.AgentPremain$DebugProbesTransformer`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractMutableCollection.class:
+Type `java.util.AbstractCollection` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractMutableCollection`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/internal/ClassValueCtorCache$cache$1.class:
+Type `java.lang.ClassValue` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.internal.ClassValueCtorCache$cache$1`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/streams/jdk8/StreamsKt.class:
+Type `java.util.function.Supplier` was not found, it is required for default or static interface methods desugaring of `kotlin.streams.jdk8.StreamsKt$$InternalSyntheticLambda$2$6ee60fe1e8514605b4f733e7cb9555fb8c69a4b6f1694321b31a4d175fd0f962$0`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/jvm/KotlinReflectionNotSupportedError.class:
+Type `java.lang.Error` was not found, it is required for default or static interface methods desugaring of `kotlin.jvm.KotlinReflectionNotSupportedError`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/debug/AgentPremain.class:
+Type `sun.misc.SignalHandler` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.debug.AgentPremain$$InternalSyntheticLambda$2$7895cd395e43c061a299e224a1d3672f97bd4610fe97f0e188c9c199a1620b54$0`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/encoding/DecodeInputStream.class:
+Type `java.io.InputStream` was not found, it is required for default or static interface methods desugaring of `kotlin.io.encoding.DecodeInputStream`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-android\1.6.4\f955fc8b2ad196e2f4429598440e15f7492eeb2b\kotlinx-coroutines-android-1.6.4.jar:kotlinx/coroutines/android/HandlerDispatcherKt.class:
+Type `android.view.Choreographer$FrameCallback` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.android.HandlerDispatcherKt$$InternalSyntheticLambda$2$2f8aa3221d05e328f7620c40e45d7e78601d10b3300463a64904405bfea13680$0`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/path/DirectoryEntriesReader.class:
+Type `java.nio.file.SimpleFileVisitor` was not found, it is required for default or static interface methods desugaring of `kotlin.io.path.DirectoryEntriesReader`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/FileSystemException.class:
+Type `java.io.IOException` was not found, it is required for default or static interface methods desugaring of `kotlin.io.FileSystemException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/KotlinNullPointerException.class:
+Type `java.lang.NullPointerException` was not found, it is required for default or static interface methods desugaring of `kotlin.KotlinNullPointerException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/concurrent/TimersKt$timerTask$1.class:
+Type `java.util.TimerTask` was not found, it is required for default or static interface methods desugaring of `kotlin.concurrent.TimersKt$timerTask$1`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\androidx.collection\collection\1.1.0\1f27220b47669781457de0d600849a5de0e89909\collection-1.1.0.jar:androidx/collection/MapCollections$MapIterator.class:
+Type `java.util.Map$Entry` was not found, it is required for default or static interface methods desugaring of `androidx.collection.MapCollections$MapIterator`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractMutableSet.class:
+Type `java.util.AbstractSet` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractMutableSet`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractMutableSet.class:
+Type `java.util.Set` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractMutableSet`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\com.google.guava\listenablefuture\1.0\c949a840a6acbc5268d088e47b04177bf90b3cad\listenablefuture-1.0.jar:com/google/common/util/concurrent/ListenableFuture.class:
+Type `java.util.concurrent.Future` was not found, it is required for default or static interface methods desugaring of `com.google.common.util.concurrent.ListenableFuture`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/ThreadPoolDispatcherKt.class:
+Type `java.util.concurrent.ThreadFactory` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.ThreadPoolDispatcherKt$$InternalSyntheticLambda$2$89902446a69267930c67d88b8ff29e719e63ade3a6b052cceaca08f292e03d30$0`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/reflect/GenericArrayTypeImpl.class:
+Type `java.lang.reflect.GenericArrayType` was not found, it is required for default or static interface methods desugaring of `kotlin.reflect.GenericArrayTypeImpl`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/collections/AbstractMutableList.class:
+Type `java.util.AbstractList` was not found, it is required for default or static interface methods desugaring of `kotlin.collections.AbstractMutableList`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/TypeCastException.class:
+Type `java.lang.ClassCastException` was not found, it is required for default or static interface methods desugaring of `kotlin.TypeCastException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/io/ReadAfterEOFException.class:
+Type `java.lang.RuntimeException` was not found, it is required for default or static interface methods desugaring of `kotlin.io.ReadAfterEOFException`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/random/KotlinRandom.class:
+Type `java.util.Random` was not found, it is required for default or static interface methods desugaring of `kotlin.random.KotlinRandom`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/scheduling/DefaultIoScheduler.class:
+Type `java.util.concurrent.Executor` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.scheduling.DefaultIoScheduler`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/debug/internal/HashedWeakRef.class:
+Type `java.lang.ref.WeakReference` was not found, it is required for default or static interface methods desugaring of `kotlinx.coroutines.debug.internal.HashedWeakRef`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/random/FallbackThreadLocalRandom$implStorage$1.class:
+Type `java.lang.ThreadLocal` was not found, it is required for default or static interface methods desugaring of `kotlin.random.FallbackThreadLocalRandom$implStorage$1`
+Warning in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.22\d6c44cd08d8f3f9bece8101216dbe6553365c6e3\kotlin-stdlib-1.9.22.jar:kotlin/reflect/WildcardTypeImpl.class:
+Type `java.lang.reflect.WildcardType` was not found, it is required for default or static interface methods desugaring of `kotlin.reflect.WildcardTypeImpl`
+> Task :example:patchApk
+Caching disabled for task ':example:patchApk' because:
+  Build cache is disabled
+  Caching has not been enabled for the task
+Task ':example:patchApk' is not up-to-date because:
+  Input property 'mixinClasses' file C:\Users\Admin\IdeaProjects\ApkMixin\example\build\classes\kotlin\main\com\example\test\MainActivityMixin$onHelloHook$1.class has been added.
+  Input property 'mixinClasses' file C:\Users\Admin\IdeaProjects\ApkMixin\example\build\classes\kotlin\main\com\example\test\MainActivityMixin.class has changed.
+  Input property 'targetApk' file C:\Users\Admin\IdeaProjects\ApkMixin\example\test.apk has changed.
+Patching APK: C:\Users\Admin\IdeaProjects\ApkMixin\example\test.apk
+Applying resource hooks from C:\Users\Admin\IdeaProjects\ApkMixin\example\src\main\res-hook
+Hooked resource: assets/hook_test.txt
+Metadata file content: [
+  {
+    "mixinClassName": "com.example.test.MainActivityMixin",
+    "targetClassName": "com.example.test.MainActivity",
+    "injections": [
+      {
+        "mixinMethodName": "onHelloHook",
+        "targetMethodName": "hello",
+        "type": "Inject",
+        "at": {
+          "value": "HEAD",
+          "offset": 0
+        }
+      }
+    ]
+  }
+]
+Info: Stripped invalid locals information from 2 methods.
+Info in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/flow/FlowKt__BuildersKt$asFlow$$inlined$unsafeFlow$10.class:
+Methods with invalid locals information:
+  java.lang.Object kotlinx.coroutines.flow.FlowKt__BuildersKt$asFlow$$inlined$unsafeFlow$10.collect(kotlinx.coroutines.flow.FlowCollector, kotlin.coroutines.Continuation)
+  Attempt to define local of type long as element$iv:java.lang.Object
+Info in C:\Users\Admin\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-coroutines-core-jvm\1.6.4\2c997cd1c0ef33f3e751d3831929aeff1390cb30\kotlinx-coroutines-core-jvm-1.6.4.jar:kotlinx/coroutines/flow/FlowKt__BuildersKt$asFlow$$inlined$unsafeFlow$9.class:
+Methods with invalid locals information:
+  java.lang.Object kotlinx.coroutines.flow.FlowKt__BuildersKt$asFlow$$inlined$unsafeFlow$9.collect(kotlinx.coroutines.flow.FlowCollector, kotlin.coroutines.Continuation)
+  Attempt to define local of type int as element$iv:java.lang.Object
+Info: Some warnings are typically a sign of using an outdated Java toolchain. To fix, recompile the source with an updated toolchain.
+Added Mixin DEX as classes2.dex
+Applying Inject to Lcom/example/test/MainActivity;->hello
+Target method registerCount: 2, params: 0, actualP0: 1
+Signing APK: C:\Users\Admin\IdeaProjects\ApkMixin\example\build\patched-apk\unsigned-test.apk
+Signing process completed (mocked for environment)
+Patched APK created: C:\Users\Admin\IdeaProjects\ApkMixin\example\build\patched-apk\patched-test.apk
+[Incubating] Problems report is available at: file:///C:/Users/Admin/IdeaProjects/ApkMixin/build/reports/problems/problems-report.html
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+BUILD SUCCESSFUL in 42s
+10 actionable tasks: 5 executed, 5 up-to-date
+Watched directory hierarchies: [C:\Users\Admin\IdeaProjects\ApkMixin]
