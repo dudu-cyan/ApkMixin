@@ -7,8 +7,10 @@ import org.gradle.api.tasks.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import java.io.File
-import java.util.zip.ZipFile
 import java.io.FileOutputStream
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipEntry
 import org.jf.dexlib2.DexFileFactory
@@ -39,6 +41,8 @@ import org.jf.dexlib2.immutable.instruction.ImmutableInstruction10x
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction11x
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction3rc
 import org.jf.dexlib2.rewriter.Rewriter
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.Opcodes as AsmOpcodes
 
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
 import com.dudu.mixin.compiler.MixinMetaData
@@ -226,6 +230,9 @@ abstract class ApkPatcherExtension @Inject constructor(objects: ObjectFactory) {
     abstract val autoInjectVariant: Property<String>
     /** 自动注入时额外跳过的 group（如 `"org.jetbrains.kotlin"`），防止 stdlib 冲突。 */
     abstract val autoInjectExcludeGroups: ListProperty<String>
+
+    /** Stub 生成范围：指定前缀列表（如 "com.tencent.qqnt"）。空列表 = 生成所有非系统类的 stub。 */
+    abstract val stubIncludePrefixes: ListProperty<String>
     /** 混淆器配置子块。 */
     val obfuscation: ObfuscationConfig = objects.newInstance(ObfuscationConfig::class.java)
     /** 签名子块。 */
@@ -295,6 +302,21 @@ class ApkPatcherPlugin : Plugin<Project>, KotlinCompilerPluginSupportPlugin {
             task.description = "Patches the target APK with Mixins"
             task.dependsOn(kotlinCompileTasks)
         }
+
+        // ── 从目标 APK 生成编译期 stub class，让 Mixin 代码可以直接 import 目标类 ──
+        val stubTask = project.tasks.register("generateTargetStubs", GenerateTargetStubs::class.java) {
+            val task = this
+            task.targetApk.set(extension.targetApk)
+            task.outputJar.set(project.layout.buildDirectory.file("target-stubs/classes.jar"))
+            task.stubIncludePrefixes.set(extension.stubIncludePrefixes)
+            group = "build"
+            description = "Generates stub classes from target APK for compile-time reference"
+        }
+
+        // 让 Kotlin 编译依赖 stub 生成，并把 stub jar 加入 compileOnly classpath
+        project.tasks.withType(KotlinJvmCompile::class.java).configureEach { dependsOn(stubTask) }
+        val stubJar = stubTask.flatMap { it.outputJar }
+        project.dependencies.add("compileOnly", project.files(stubJar).builtBy(stubTask))
 
         project.afterEvaluate {
             if (!extension.autoInjectImplementation.getOrElse(true)) {
@@ -1069,12 +1091,25 @@ abstract class PatchApkTask : DefaultTask() {
         val targetParamRegCount = method.parameters.sumOf { wordSize(it.type) }
         val firstParamReg = originalImpl.registerCount - targetParamRegCount - (if (isStaticTarget) 0 else 1)
 
-        // 构造 invoke-static：如果 hasReceiver，则把 this(p0) 作为参数传入
+        // 构造 invoke-static：
+        //   1) hasReceiver=true → 将 target 实例 this 作为 handler 首参传入
+        //   2) 剩余 handler 形参与 target 方法实参按位置匹配（跳过 CallbackInfo）
         val invokeArgRegs = mutableListOf<Int>()
-        if (inj.hasReceiver && !isStaticTarget) {
-            invokeArgRegs.add(firstParamReg)  // this
+        if (!isStaticTarget && inj.hasReceiver) {
+            invokeArgRegs.add(firstParamReg)  // target's this
         }
-        // 注：CallbackInfo / 其它额外参数的真正构造留给后续任务，这里只匹配最基础形态
+
+        // 跳过 this 寄存器槽位，从 target 第一个参数开始映射
+        val targetParamStart = firstParamReg + (if (isStaticTarget) 0 else 1)
+        val handlerParamCount = mixinParamTypes.size - (if (inj.hasCallbackInfo) 1 else 0)
+        val paramsToTake = if (inj.hasReceiver) handlerParamCount - 1 else handlerParamCount
+        val targetParamList = method.parameters.toList()
+
+        var reg = targetParamStart
+        for (i in 0 until minOf(paramsToTake, targetParamList.size)) {
+            invokeArgRegs.add(reg)
+            reg += wordSize(targetParamList[i].type)
+        }
 
         val invokeInstr = buildInvokeStatic(invokeArgRegs, methodRef)
 
@@ -1444,5 +1479,175 @@ abstract class PatchApkTask : DefaultTask() {
                 }
             }
         }
+    }
+}
+
+/**
+ * 从目标 APK 的 DEX 中读取所有应用类，生成空的 .class stub，
+ * 打包为 JAR 供 Mixin 模块在编译期引用。
+ *
+ * 生成的 stub 只保留类层次结构 + 方法/字段签名（无方法体），
+ * 不会与任何运行时依赖冲突（compileOnly 作用域）。
+ */
+abstract class GenerateTargetStubs : DefaultTask() {
+    @get:InputFile
+    abstract val targetApk: RegularFileProperty
+
+    @get:OutputFile
+    abstract val outputJar: RegularFileProperty
+
+    /** 范围过滤：只对匹配这些前缀的类生成 stub（空 = 生成所有非系统类的 stub）。 */
+    @get:Input
+    abstract val stubIncludePrefixes: ListProperty<String>
+
+    /** 系统包前缀 — 这些类已存在于 Android SDK / JDK 中，无需生成 stub */
+    /** 系统包前缀 — 这些类已存在于 Android SDK / JDK 中，无需生成 stub */
+    private val systemPrefixes = listOf(
+        "android/", "androidx/", "java/", "javax/", "kotlin/", "kotlinx/",
+        "dalvik/", "com/android/", "org/apache/", "org/json/",
+    )
+
+    /** Bootclasspath 前缀 — 这些类在 android.jar / JDK 上，编译期必定可用。 */
+    private val bootclasspathPrefixes = listOf(
+        "android/", "java/", "javax/", "dalvik/",
+    )
+
+    @TaskAction
+    fun generate() {
+        val apk = targetApk.orNull?.asFile
+        if (apk == null || !apk.exists()) {
+            println("[mixin-stubs] targetApk not set or file not found — skipping stub generation")
+            return
+        }
+
+        val jar = outputJar.get().asFile
+        jar.parentFile.mkdirs()
+
+        val includePrefixes = stubIncludePrefixes.getOrElse(emptyList()).map { it.replace('.', '/') }
+        // empty = all non-system
+
+        // 第一遍：读取所有 DEX 中的全部类定义（不过滤），同时维护一个应用类子集用于 stub 生成
+        val rawClassDefs = linkedMapOf<String, ClassDef>()  // 全部类（含系统），用于 super 链解析
+        val appClassDefs = linkedMapOf<String, ClassDef>()  // 非系统 + 匹配范围前缀 → 实际生成 stub
+
+        ZipFile(apk).use { zip ->
+            val dexEntries = zip.entries().asSequence()
+                .filter { it.name.matches(Regex("classes\\d*\\.dex")) && !it.isDirectory }
+                .toList()
+
+            if (dexEntries.isEmpty()) {
+                println("[mixin-stubs] No DEX files found in ${apk.absolutePath}")
+                return
+            }
+
+            for (entry in dexEntries) {
+                val dexData = zip.getInputStream(entry).readBytes()
+                val tempDex = File.createTempFile("dex-stub-", ".dex").apply { deleteOnExit() }
+                try {
+                    tempDex.writeBytes(dexData)
+                    val dexFile = DexFileFactory.loadDexFile(tempDex, org.jf.dexlib2.Opcodes.getDefault())
+                    for (classDef in dexFile.classes) {
+                        val internalName = classDef.type.removePrefix("L").removeSuffix(";")
+                        if (internalName in rawClassDefs) continue
+                        rawClassDefs[internalName] = classDef
+
+                        // 只有非系统类且匹配范围时才生成 stub
+                        if (systemPrefixes.any { internalName.startsWith(it) }) continue
+                        if (includePrefixes.isNotEmpty() && includePrefixes.none { internalName.startsWith(it) }) continue
+                        appClassDefs[internalName] = classDef
+                    }
+                } finally {
+                    tempDex.delete()
+                }
+            }
+        }
+
+        if (appClassDefs.isEmpty()) {
+            println("[mixin-stubs] No stubs generated (all classes match system or scope filter)")
+            JarOutputStream(FileOutputStream(jar)).use { /* empty jar */ }
+            return
+        }
+
+        // 第二遍：为每个类计算有效父类。
+        // 使用 rawClassDefs（全部类）沿继承链向上走，直到遇到 bootclasspath 上的类为止。
+        val visited = hashMapOf<String, String?>()  // internalName → resolvedSuper (null = Object)
+
+        fun effectiveSuper(internal: String): String? {
+            visited[internal]?.let { return it }
+            if (internal == "java/lang/Object") return null
+            if (bootclasspathPrefixes.any { internal.startsWith(it) }) return internal
+
+            val def = rawClassDefs[internal] ?: return null
+            val superName = def.superclass?.removePrefix("L")?.removeSuffix(";") ?: return null
+            val resolved = effectiveSuper(superName)
+            visited[internal] = resolved
+            return resolved
+        }
+
+        val stubs = linkedMapOf<String, ByteArray>()
+        for ((internalName, classDef) in appClassDefs) {
+            val superName = if (classDef.superclass != null) {
+                val rawSuper = classDef.superclass!!.removePrefix("L").removeSuffix(";")
+                effectiveSuper(rawSuper) ?: "java/lang/Object"
+            } else "java/lang/Object"
+            stubs[internalName] = generateStub(classDef, superName)
+        }
+
+        JarOutputStream(FileOutputStream(jar)).use { jos ->
+            for ((name, bytes) in stubs) {
+                jos.putNextEntry(JarEntry("$name.class"))
+                jos.write(bytes)
+                jos.closeEntry()
+            }
+        }
+
+        println("[mixin-stubs] Generated ${stubs.size} stubs -> ${jar.absolutePath}")
+    }
+
+    private fun generateStub(classDef: ClassDef, effectiveSuperName: String): ByteArray {
+        val internalName = classDef.type.removePrefix("L").removeSuffix(";")
+        val interfaces = classDef.interfaces.map { it.removePrefix("L").removeSuffix(";") }.toTypedArray()
+
+        // 构造空类骨架：保留类层次，方法/字段签名
+        val cw = ClassWriter(0)
+        cw.visit(
+            AsmOpcodes.V1_8,
+            (classDef.accessFlags and 0xFFFF) or AsmOpcodes.ACC_PUBLIC,
+            internalName, null,
+            effectiveSuperName,
+            interfaces,
+        )
+
+        // 字段：保留签名
+        for (field in classDef.fields) {
+            cw.visitField(
+                (field.accessFlags and 0xFFFF) or AsmOpcodes.ACC_PUBLIC,
+                field.name, field.type, null, null,
+            )?.visitEnd()
+        }
+
+        // 方法：生成空方法体（返回类型对应的默认值）
+        for (method in classDef.methods) {
+            val access = (method.accessFlags and 0xFFFF) or AsmOpcodes.ACC_PUBLIC
+            val desc = "(${method.parameterTypes.joinToString("")})${method.returnType}"
+            val mw = cw.visitMethod(access, method.name, desc, null, null)
+            mw.visitCode()
+            val retType = method.returnType.toString()
+            when {
+                retType == "V" -> mw.visitInsn(AsmOpcodes.RETURN)
+                retType in setOf("I", "Z", "B", "C", "S") -> {
+                    mw.visitInsn(AsmOpcodes.ICONST_0); mw.visitInsn(AsmOpcodes.IRETURN)
+                }
+                retType == "J" -> { mw.visitInsn(AsmOpcodes.LCONST_0); mw.visitInsn(AsmOpcodes.LRETURN) }
+                retType == "F" -> { mw.visitInsn(AsmOpcodes.FCONST_0); mw.visitInsn(AsmOpcodes.FRETURN) }
+                retType == "D" -> { mw.visitInsn(AsmOpcodes.DCONST_0); mw.visitInsn(AsmOpcodes.DRETURN) }
+                else -> { mw.visitInsn(AsmOpcodes.ACONST_NULL); mw.visitInsn(AsmOpcodes.ARETURN) }
+            }
+            mw.visitMaxs(2, 1)
+            mw.visitEnd()
+        }
+
+        cw.visitEnd()
+        return cw.toByteArray()
     }
 }

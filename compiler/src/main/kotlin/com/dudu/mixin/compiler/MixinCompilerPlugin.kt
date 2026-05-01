@@ -237,19 +237,19 @@ private class MixinIrVisitor(
                     )
                 }
                 func.hasAnnotation(Fq.INJECT) -> injections.addParse(
-                    func, func.getAnnotation(Fq.INJECT)!!, InjectionKind.INJECT,
+                    func, func.getAnnotation(Fq.INJECT)!!, InjectionKind.INJECT, targetClassName,
                 )
                 func.hasAnnotation(Fq.REDIRECT) -> injections.addParse(
-                    func, func.getAnnotation(Fq.REDIRECT)!!, InjectionKind.REDIRECT,
+                    func, func.getAnnotation(Fq.REDIRECT)!!, InjectionKind.REDIRECT, targetClassName,
                 )
                 func.hasAnnotation(Fq.OVERWRITE) -> injections.addParse(
-                    func, func.getAnnotation(Fq.OVERWRITE)!!, InjectionKind.OVERWRITE,
+                    func, func.getAnnotation(Fq.OVERWRITE)!!, InjectionKind.OVERWRITE, targetClassName,
                 )
                 func.hasAnnotation(Fq.MODIFY_ARG) -> injections.addParse(
-                    func, func.getAnnotation(Fq.MODIFY_ARG)!!, InjectionKind.MODIFY_ARG,
+                    func, func.getAnnotation(Fq.MODIFY_ARG)!!, InjectionKind.MODIFY_ARG, targetClassName,
                 )
                 func.hasAnnotation(Fq.MODIFY_VAR) -> injections.addParse(
-                    func, func.getAnnotation(Fq.MODIFY_VAR)!!, InjectionKind.MODIFY_VARIABLE,
+                    func, func.getAnnotation(Fq.MODIFY_VAR)!!, InjectionKind.MODIFY_VARIABLE, targetClassName,
                 )
                 else -> {
                     addMembers += MemberRef(func.name.asString(), descriptor)
@@ -273,6 +273,7 @@ private class MixinIrVisitor(
         func: IrSimpleFunction,
         ann: IrConstructorCall,
         kind: InjectionKind,
+        targetClassName: String,
     ) {
         val mixinName = func.name.asString()
         val mixinDesc = func.toJvmMethodDescriptor()
@@ -329,7 +330,7 @@ private class MixinIrVisitor(
             }
         }
 
-        val (hasReceiver, hasCi, ciReturnable) = detectMixinSignature(func)
+        val (hasReceiver, hasCi, ciReturnable) = detectMixinSignature(func, targetClassName)
 
         add(
             InjectionData(
@@ -396,11 +397,17 @@ private val IrClassReference.classFqName: String?
  * Probe Mixin method signature characteristics:
  *  - Triple(hasReceiver, hasCallbackInfo, ciReturnable)
  *
- * 第一个参数若不是 CallbackInfo，则视为 receiver；
+ * hasReceiver = true 表示 handler 的第一个声明参数应接收目标实例 this。
+ * 判定规则（满足任一即可）：
+ *   1) 方法有 dispatch receiver（非静态 class 方法不加 @JvmStatic），
+ *      按 Sponge 惯例，首个声明参数即目标实例。
+ *   2) 首个声明参数的 FQN 与目标类完全一致（适用于 object + @JvmStatic）。
+ *
  * 末位参数若是 CallbackInfo / CallbackInfoReturnable，则识别为回调对象。
  */
 private fun detectMixinSignature(
     func: IrSimpleFunction,
+    targetClassName: String,
 ): Triple<Boolean, Boolean, Boolean> {
     val params = func.parameters.filter {
         it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context
@@ -413,7 +420,9 @@ private fun detectMixinSignature(
     val hasCi = lastFqn == Fq.CALLBACK_INFO || lastFqn == Fq.CALLBACK_INFO_RETURNABLE
     val ciRet = lastFqn == Fq.CALLBACK_INFO_RETURNABLE
 
-    val hasReceiver = func.dispatchReceiverParameter != null
+    // 非静态 class 方法按惯例 handler 首参 = 目标实例；
+    // 静态/object 方法则通过精确类型匹配判定
+    val hasReceiver = (func.dispatchReceiverParameter != null) || (firstFqn == targetClassName)
     return Triple(hasReceiver, hasCi, ciRet)
 }
 

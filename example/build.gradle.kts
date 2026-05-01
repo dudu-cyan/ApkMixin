@@ -47,6 +47,9 @@ apkPatcher {
     targetApk.set(file("com.tencent.qqlite.apk"))
     enableResourceHook.set(false)
 
+    // Stub 范围：只对 com.tencent.qqnt.watch.mainframe 包下的类生成编译期 stub
+    stubIncludePrefixes.add("com.tencent.qqnt.watch.mainframe")
+
     // ───── 第三方库注入 ─────
     // 默认 autoInjectImplementation=true，上方 dependencies { implementation(...) } 里
     // 声明的 compose / wear-compose / androidx 等都会被自动 dex 化并合并进 patched APK。

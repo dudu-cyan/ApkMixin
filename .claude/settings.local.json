@@ -51,7 +51,21 @@
       "Bash(./gradlew :plugin:compileKotlin)",
       "Bash(wherewhere.exe java *)",
       "Bash(cmd.exe /c \"where java\")",
-      "WebFetch(domain:docs.gradle.org)"
+      "WebFetch(domain:docs.gradle.org)",
+      "Bash(./gradlew :compiler:compileKotlin :plugin:compileKotlin)",
+      "Bash(export JAVA_HOME=/c/Users/cloud_user/.jdks/openjdk-21.0.2 2)",
+      "Bash(env)",
+      "Bash(export JAVA_HOME=/c/Users/cloud_user/.jdks/jbrsdk_jcef-21.0.10)",
+      "Bash(./gradlew :compiler:compileKotlin :plugin:compileKotlin :compiler:jar :mixin-lib:jar :plugin:jar)",
+      "Bash(./gradlew publishToMavenLocal)",
+      "Bash(./gradlew :example:generateTargetStubs --info)",
+      "Bash(./gradlew :example:generateTargetStubs)",
+      "Bash(jar tf *)",
+      "Bash(export JAVA_HOME=\"/c/Users/cloud_user/AppData/Local/Programs/IntelliJ IDEA/jbr\")",
+      "Bash(./gradlew :plugin:publishToMavenLocal)",
+      "Bash(./gradlew :example:clean :example:generateTargetStubs :example:compileDebugKotlin)",
+      "Bash(./gradlew :example:clean :example:generateTargetStubs)",
+      "Bash(./gradlew :example:compileDebugKotlin)"
     ]
   }
 }
