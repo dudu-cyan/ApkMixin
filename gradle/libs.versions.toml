@@ -45,6 +45,7 @@ h2 = "2.3.232"
 postgres = "42.7.8"
 logback = "1.5.21"
 junit = "4.13.2"
+coreKtx = "1.18.0"
 
 [libraries]
 # Kotlin & Testing
@@ -120,6 +121,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 coil-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 materialkolor = { module = "com.materialkolor:material-color-utilities", version.ref = "materialKolor" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

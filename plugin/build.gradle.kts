@@ -3,7 +3,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.example"
+group = "com.dudu"
 version = "1.0.0"
 
 dependencies {
@@ -15,6 +15,8 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("net.lingala.zip4j:zip4j:2.11.5")
+    implementation("org.ow2.asm:asm:9.6")
+    implementation("org.ow2.asm:asm-commons:9.6")
     implementation(project(":mixin-lib"))
     implementation(project(":compiler"))
 }
@@ -22,8 +24,8 @@ dependencies {
 gradlePlugin {
     plugins {
         create("apkPatcher") {
-            id = "com.example.apk-patcher"
-            implementationClass = "com.example.mixin.plugin.ApkPatcherPlugin"
+            id = "com.dudu.apk-patcher"
+            implementationClass = "com.dudu.mixin.plugin.ApkPatcherPlugin"
         }
     }
 }

@@ -3,7 +3,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.example"
+group = "com.dudu"
 version = "1.0.0"
 
 dependencies {
