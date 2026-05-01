@@ -17,7 +17,7 @@ import org.jf.dexlib2.iface.ClassDef
 import org.jf.dexlib2.immutable.ImmutableClassDef
 import org.jf.dexlib2.rewriter.DexRewriter
 import org.jf.dexlib2.rewriter.RewriterModule
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.gradle.api.provider.Property
 import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
 import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
@@ -258,7 +258,7 @@ class ApkPatcherPlugin : Plugin<Project>, KotlinCompilerPluginSupportPlugin {
             task.mixinClasses.from(extension.mixinClasses)
             task.extraLibraries.from(extension.extraLibraries)
 
-            val kotlinCompileTasks = project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java)
+            val kotlinCompileTasks = project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile::class.java)
             task.mixinClasses.from(kotlinCompileTasks.map { t -> t.destinationDirectory })
 
             task.enableResourceHook.set(extension.enableResourceHook)
@@ -767,7 +767,7 @@ abstract class PatchApkTask : DefaultTask() {
         val targetParamRegCount = method.parameters.sumOf { wordSize(it.type) }
         val totalParamRegs = (if (isStatic) 0 else 1) + targetParamRegCount
 
-        // 透传所有参数（含 receiver）给 Mixin 静态方法
+        // 透传参数给 Mixin 静态方法，参数个数与 Mixin 方法声明匹配
         val argRegs = mutableListOf<Int>()
         var reg = 0
         if (!isStatic && inj.hasReceiver) {
@@ -776,9 +776,15 @@ abstract class PatchApkTask : DefaultTask() {
         } else if (!isStatic) {
             reg++ // skip this
         }
-        for (p in method.parameters) {
+
+        // Only pass as many target params as the Mixin method actually expects
+        val receiverSlot = if (inj.hasReceiver && !isStatic) 1 else 0
+        val mixinRemaining = mixinParamTypes.size - receiverSlot
+        val targetList = method.parameters.toList()
+        val paramsToCopy = minOf(mixinRemaining, targetList.size)
+        for (i in 0 until paramsToCopy) {
             argRegs.add(reg)
-            reg += wordSize(p.type)
+            reg += wordSize(targetList[i].type)
         }
 
         // 寄存器数至少要满足参数寄存器，再加上一个用来放返回值

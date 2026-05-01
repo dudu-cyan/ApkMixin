@@ -1,3 +1,5 @@
+@file:OptIn(UnsafeDuringIrConstructionAPI::class)
+
 package com.dudu.mixin.compiler
 
 import com.google.gson.GsonBuilder
@@ -14,11 +16,13 @@ import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.IrTypeProjection
@@ -26,7 +30,7 @@ import org.jetbrains.kotlin.ir.types.classifierOrNull
 import org.jetbrains.kotlin.ir.util.getAnnotation
 import org.jetbrains.kotlin.ir.util.hasAnnotation
 import org.jetbrains.kotlin.ir.util.kotlinFqName
-import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
+import org.jetbrains.kotlin.ir.visitors.IrVisitor
 import org.jetbrains.kotlin.name.FqName
 import java.io.File
 
@@ -179,7 +183,7 @@ class MixinIrGenerationExtension(private val outputDir: String) : IrGenerationEx
 
 private class MixinIrVisitor(
     private val out: MutableList<MixinMetaData>,
-) : IrElementVisitor<Unit, Nothing?> {
+) : IrVisitor<Unit, Nothing?>() {
 
     override fun visitElement(element: IrElement, data: Nothing?) {
         element.acceptChildren(this, null)
@@ -194,15 +198,15 @@ private class MixinIrVisitor(
     private fun processMixinClass(declaration: IrClass, mixinAnn: IrConstructorCall) {
         // target 字符串优先，否则 targetClass: KClass
         val targetByString =
-            (mixinAnn.getValueArgument(0) as? IrConst<*>)?.value as? String
-        val targetByClass = (mixinAnn.getValueArgument(1) as? IrClassReference)
-            ?.classType?.fqnOrNull()
+            (mixinAnn.arguments[0] as? IrConst)?.value as? String
+        val targetByClass = (mixinAnn.arguments[1] as? IrClassReference)
+            ?.classFqName
             ?.takeIf { it != "kotlin.Unit" }
         val targetClassName = (targetByString?.takeIf { it.isNotBlank() } ?: targetByClass)
             ?: return
 
-        val priority = (mixinAnn.getValueArgument(2) as? IrConst<*>)?.value as? Int ?: 1000
-        val remap = (mixinAnn.getValueArgument(3) as? IrConst<*>)?.value as? Boolean ?: true
+        val priority = (mixinAnn.arguments[2] as? IrConst)?.value as? Int ?: 1000
+        val remap = (mixinAnn.arguments[3] as? IrConst)?.value as? Boolean ?: true
 
         // 提升所有带 mixin 注解的方法可见性，保证 KotlinJVM 字节码与 dex 链路上方法仍保留
         declaration.declarations.filterIsInstance<IrSimpleFunction>().forEach { f ->
@@ -227,7 +231,7 @@ private class MixinIrVisitor(
                 }
                 func.hasAnnotation(Fq.ACCESSOR) -> {
                     val ann = func.getAnnotation(Fq.ACCESSOR)
-                    val target = (ann?.getValueArgument(0) as? IrConst<*>)?.value as? String ?: ""
+                    val target = (ann?.arguments[0] as? IrConst)?.value as? String ?: ""
                     accessors += AccessorData(
                         func.name.asString(), descriptor, target, isField = false,
                     )
@@ -274,7 +278,7 @@ private class MixinIrVisitor(
         val mixinDesc = func.toJvmMethodDescriptor()
 
         val (targetName, targetDesc) = parseTargetMethodSignature(
-            (ann.getValueArgument(0) as? IrConst<*>)?.value as? String ?: return
+            (ann.arguments[0] as? IrConst)?.value as? String ?: return
         )
 
         val at: AtData
@@ -285,15 +289,15 @@ private class MixinIrVisitor(
 
         when (kind) {
             InjectionKind.INJECT -> {
-                at = (ann.getValueArgument(1) as? IrConstructorCall)?.toAtData()
+                at = (ann.arguments[1] as? IrConstructorCall)?.toAtData()
                     ?: AtData("HEAD")
-                cancellable = (ann.getValueArgument(2) as? IrConst<*>)?.value as? Boolean ?: false
-                require = (ann.getValueArgument(3) as? IrConst<*>)?.value as? Int ?: 0
+                cancellable = (ann.arguments[2] as? IrConst)?.value as? Boolean ?: false
+                require = (ann.arguments[3] as? IrConst)?.value as? Int ?: 0
                 injectIndex = 0
                 keepOriginal = false
             }
             InjectionKind.REDIRECT -> {
-                at = (ann.getValueArgument(1) as? IrConstructorCall)?.toAtData()
+                at = (ann.arguments[1] as? IrConstructorCall)?.toAtData()
                     ?: AtData("INVOKE")
                 cancellable = false
                 require = 0
@@ -305,22 +309,22 @@ private class MixinIrVisitor(
                 cancellable = false
                 require = 0
                 injectIndex = 0
-                keepOriginal = (ann.getValueArgument(1) as? IrConst<*>)?.value as? Boolean ?: false
+                keepOriginal = (ann.arguments[1] as? IrConst)?.value as? Boolean ?: false
             }
             InjectionKind.MODIFY_ARG -> {
-                at = (ann.getValueArgument(1) as? IrConstructorCall)?.toAtData()
+                at = (ann.arguments[1] as? IrConstructorCall)?.toAtData()
                     ?: AtData("INVOKE")
                 cancellable = false
                 require = 0
-                injectIndex = (ann.getValueArgument(2) as? IrConst<*>)?.value as? Int ?: 0
+                injectIndex = (ann.arguments[2] as? IrConst)?.value as? Int ?: 0
                 keepOriginal = false
             }
             InjectionKind.MODIFY_VARIABLE -> {
-                at = (ann.getValueArgument(1) as? IrConstructorCall)?.toAtData()
+                at = (ann.arguments[1] as? IrConstructorCall)?.toAtData()
                     ?: AtData("HEAD")
                 cancellable = false
                 require = 0
-                injectIndex = (ann.getValueArgument(2) as? IrConst<*>)?.value as? Int ?: -1
+                injectIndex = (ann.arguments[2] as? IrConst)?.value as? Int ?: -1
                 keepOriginal = false
             }
         }
@@ -370,10 +374,10 @@ private fun IrConstructorCall.isFromMixinLib(): Boolean {
 }
 
 private fun IrConstructorCall.toAtData(): AtData {
-    fun str(idx: Int) = (getValueArgument(idx) as? IrConst<*>)?.value as? String
-    fun int(idx: Int) = (getValueArgument(idx) as? IrConst<*>)?.value as? Int
-    val args = (getValueArgument(5) as? IrVararg)?.elements
-        ?.mapNotNull { (it as? IrConst<*>)?.value as? String }
+    fun str(idx: Int) = (arguments[idx] as? IrConst)?.value as? String
+    fun int(idx: Int) = (arguments[idx] as? IrConst)?.value as? Int
+    val args = (arguments[5] as? IrVararg)?.elements
+        ?.mapNotNull { (it as? IrConst)?.value as? String }
         ?: emptyList()
     return AtData(
         value = str(0) ?: "HEAD",
@@ -385,6 +389,9 @@ private fun IrConstructorCall.toAtData(): AtData {
     )
 }
 
+private val IrClassReference.classFqName: String?
+    get() = (symbol.owner as? IrClass)?.kotlinFqName?.asString()
+
 /**
  * Probe Mixin method signature characteristics:
  *  - Triple(hasReceiver, hasCallbackInfo, ciReturnable)
@@ -395,7 +402,9 @@ private fun IrConstructorCall.toAtData(): AtData {
 private fun detectMixinSignature(
     func: IrSimpleFunction,
 ): Triple<Boolean, Boolean, Boolean> {
-    val params = func.valueParameters
+    val params = func.parameters.filter {
+        it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context
+    }
     if (params.isEmpty()) return Triple(false, false, false)
 
     val firstFqn = params.first().type.fqnOrNull()
@@ -404,11 +413,7 @@ private fun detectMixinSignature(
     val hasCi = lastFqn == Fq.CALLBACK_INFO || lastFqn == Fq.CALLBACK_INFO_RETURNABLE
     val ciRet = lastFqn == Fq.CALLBACK_INFO_RETURNABLE
 
-    val hasReceiver = when {
-        params.size == 1 && hasCi -> false
-        firstFqn == Fq.CALLBACK_INFO || firstFqn == Fq.CALLBACK_INFO_RETURNABLE -> false
-        else -> true
-    }
+    val hasReceiver = func.dispatchReceiverParameter != null
     return Triple(hasReceiver, hasCi, ciRet)
 }
 
@@ -454,7 +459,9 @@ private fun IrType.toJvmDescriptor(): String {
 }
 
 private fun IrSimpleFunction.toJvmMethodDescriptor(): String {
-    val params = valueParameters.joinToString(separator = "") { it.type.toJvmDescriptor() }
+    val params = parameters
+        .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+        .joinToString(separator = "") { it.type.toJvmDescriptor() }
     val ret = returnType.toJvmDescriptor()
     return "($params)$ret"
 }

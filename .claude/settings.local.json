@@ -41,7 +41,17 @@
       "Bash(exist \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\" dir \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\")",
       "PowerShell(Get-Command java -ErrorAction SilentlyContinue; Get-Command gradle -ErrorAction SilentlyContinue; Write-Host '---'; if \\(Test-Path 'C:\\\\Program Files\\\\Java'\\) { Get-ChildItem 'C:\\\\Program Files\\\\Java' }; Write-Host '---'; if \\(Test-Path 'C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr'\\) { Write-Host 'Android Studio jbr exists' }; if \\(Test-Path 'C:\\\\Program Files\\\\Eclipse Adoptium'\\) { Get-ChildItem 'C:\\\\Program Files\\\\Eclipse Adoptium' }; Write-Host '---'; Write-Host \"JAVA_HOME=$env:JAVA_HOME\")",
       "PowerShell(Get-ChildItem 'C:\\\\Program Files' -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'jdk|jbr|java|jetbrains|android' -or $_.Name -match 'temurin|amazon|bellsoft|microsoft' } | Select-Object FullName; Write-Host '---'; Get-ChildItem 'C:\\\\' -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'jdk|jbr|java' } | Select-Object FullName; Write-Host '---users---'; Get-ChildItem \"$env:USERPROFILE\\\\.jdks\" -Directory -ErrorAction SilentlyContinue | Select-Object FullName)",
-      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\" -Directory -ErrorAction SilentlyContinue | Select-Object FullName; Write-Host '---'; Get-ChildItem \"$env:USERPROFILE\" -Directory -ErrorAction SilentlyContinue | Select-Object FullName; Write-Host '---ApkMixin gradle wrapper---'; if \\(Test-Path 'C:\\\\Users\\\\cloud_user\\\\IdeaProjects\\\\ApkMixin\\\\gradle\\\\wrapper\\\\gradle-wrapper.properties'\\) { Get-Content 'C:\\\\Users\\\\cloud_user\\\\IdeaProjects\\\\ApkMixin\\\\gradle\\\\wrapper\\\\gradle-wrapper.properties' })"
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\" -Directory -ErrorAction SilentlyContinue | Select-Object FullName; Write-Host '---'; Get-ChildItem \"$env:USERPROFILE\" -Directory -ErrorAction SilentlyContinue | Select-Object FullName; Write-Host '---ApkMixin gradle wrapper---'; if \\(Test-Path 'C:\\\\Users\\\\cloud_user\\\\IdeaProjects\\\\ApkMixin\\\\gradle\\\\wrapper\\\\gradle-wrapper.properties'\\) { Get-Content 'C:\\\\Users\\\\cloud_user\\\\IdeaProjects\\\\ApkMixin\\\\gradle\\\\wrapper\\\\gradle-wrapper.properties' })",
+      "Bash(./gradlew clean *)",
+      "Read(//usr/lib/**)",
+      "Read(//usr/local/**)",
+      "Read(//c//**)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(./gradlew :plugin:compileKotlin)",
+      "Bash(wherewhere.exe java *)",
+      "Bash(cmd.exe /c \"where java\")",
+      "WebFetch(domain:docs.gradle.org)"
     ]
   }
 }

@@ -7,7 +7,7 @@ group = "com.dudu"
 version = "1.0.0"
 
 dependencies {
-    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.22")
+    compileOnly(libs.kotlin.compiler.embeddable)
     implementation("com.google.code.gson:gson:2.10.1")
 }
 
