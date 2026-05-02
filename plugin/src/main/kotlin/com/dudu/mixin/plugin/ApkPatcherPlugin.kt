@@ -637,8 +637,9 @@ abstract class PatchApkTask : DefaultTask() {
             println("Added Mixin DEX as $nextSlot")
         }
 
-        // 2. 第三方库 → DEX，并去重已存在的 type
-        val extraLibDexFiles = prepareExtraLibrariesDex(existingTypes)
+        // 2. 第三方库 → DEX，并去重已存在的 type；同时提取 AAR 中的 res/ 资源
+        val resMergeDir = File(workDir, "res")
+        val extraLibDexFiles = prepareExtraLibrariesDex(existingTypes, workDir, resMergeDir)
         for (extraLibDex in extraLibDexFiles) {
             val nextSlot = nextDexSlotName(workDir)
             extraLibDex.copyTo(File(workDir, nextSlot), overwrite = true)
@@ -678,6 +679,34 @@ abstract class PatchApkTask : DefaultTask() {
                 outputDex.renameTo(dexFile)
             }
         }
+
+        // 4. 重新编号 DEX 文件为连续数字，避免 ART 在部分版本上遇到空缺就停止扫描
+        renumberDexFiles(workDir)
+    }
+
+    /** 将所有 classes*.dex 重编号为连续数字，消除空缺。 */
+    private fun renumberDexFiles(workDir: File) {
+        val allDex = (workDir.listFiles { _, n -> n.endsWith(".dex") } ?: emptyArray())
+            .sortedBy { dexSlotNumber(it.name) }
+        if (allDex.size <= 1) return
+
+        // 先移到临时名避免冲突
+        for ((i, f) in allDex.withIndex()) {
+            if (!f.renameTo(File(workDir, ".dex-renumber-$i"))) {
+                println("[dex] Warning: failed to rename ${f.name} for renumbering")
+                return
+            }
+        }
+        // 再按连续槽位命名
+        for (i in allDex.indices) {
+            val tmp = File(workDir, ".dex-renumber-$i")
+            val slot = i + 1
+            val targetName = if (slot == 1) "classes.dex" else "classes$slot.dex"
+            if (!tmp.renameTo(File(workDir, targetName))) {
+                println("[dex] Warning: failed to rename temp $i → $targetName")
+            }
+        }
+        println("[dex] Renumbered ${allDex.size} DEX file(s) contiguously")
     }
 
     /** 计算下一个可用的 classes*.dex 槽位名。 */
@@ -689,6 +718,13 @@ abstract class PatchApkTask : DefaultTask() {
         var i = 2
         while ("classes$i.dex" in existing) i++
         return "classes$i.dex"
+    }
+
+    /** Extract slot number from DEX filename: classes.dex → 1, classes2.dex → 2. */
+    private fun dexSlotNumber(name: String): Int {
+        if (name == "classes.dex") return 1
+        val m = Regex("""classes(\d+)\.dex""").find(name)
+        return m?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
     }
 
     /** 收集 APK 中现存的所有 dex type（"Lcom/foo/Bar;" 形式）。 */
@@ -951,7 +987,7 @@ abstract class PatchApkTask : DefaultTask() {
      *
      * 支持超过 64K 方法的 multi-dex 产物（classes.dex / classes2.dex / ...）。
      */
-    private fun prepareExtraLibrariesDex(existingTypes: Set<String>): List<File> {
+    private fun prepareExtraLibrariesDex(existingTypes: Set<String>, workDir: File, resDir: File? = null): List<File> {
         val files = extraLibraries.files
         if (files.isEmpty()) return emptyList()
 
@@ -988,6 +1024,18 @@ abstract class PatchApkTask : DefaultTask() {
                     val target = File(tempInputDir, "lib-${idx++}").apply { mkdirs() }
                     extractZipClasses(f, target)
                     target.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { collectedClasses.add(it) }
+                    // AAR 额外提取 res/ 资源文件
+                    if (f.extension == "aar" && resDir != null) {
+                        extractAarResources(f, resDir)
+                    }
+                    // 从 R.txt 生成 R$* class 并注入 D8 编译（支持 .aar / .jar 中有 R.txt 的情况）
+                    if (f.extension == "aar" || f.extension == "jar") {
+                        val rClasses = generateRClassesFromAAR(f, existingTypes, target)
+                        collectedClasses.addAll(rClasses)
+                        if (rClasses.isNotEmpty()) {
+                            println("Generated ${rClasses.size} R class file(s) from ${f.name}")
+                        }
+                    }
                 }
             }
         }
@@ -1003,26 +1051,202 @@ abstract class PatchApkTask : DefaultTask() {
         var added = 0
         var skippedHost = 0
         var skippedDup = 0
+        val nonDupClasses = mutableListOf<File>()
+        val dupClasses = mutableListOf<File>()
         val seenAcrossLibs = mutableSetOf<String>()
         for (cls in collectedClasses) {
             val typeDesc = classFileToTypeDescriptor(cls)
             if (typeDesc != null) {
-                if (typeDesc in existingTypes) { skippedHost++; continue }
+                if (typeDesc in existingTypes) { dupClasses.add(cls); skippedHost++; continue }
                 if (!seenAcrossLibs.add(typeDesc)) { skippedDup++; continue }
             }
-            builder.addClassProgramData(cls.readBytes(), Origin.unknown())
+            nonDupClasses.add(cls)
             added++
         }
-        println("Extra lib: added $added classes, skipped $skippedHost dup-vs-host, $skippedDup dup-across-libs")
-        if (added == 0) return emptyList()
 
-        builder.setOutput(tempDexDir.toPath(), OutputMode.DexIndexed)
-        D8.run(builder.build())
+        for (cls in nonDupClasses) {
+            builder.addClassProgramData(cls.readBytes(), Origin.unknown())
+        }
+        val nonDupAdded = added
+        println("Extra lib: added $nonDupAdded classes, skipped $skippedHost dup-vs-host, $skippedDup dup-across-libs")
+        if (nonDupAdded > 0) {
+            builder.setOutput(tempDexDir.toPath(), OutputMode.DexIndexed)
+            D8.run(builder.build())
+        }
 
-        val produced = tempDexDir.listFiles { _, name -> name.endsWith(".dex") }?.sortedBy { it.name }
-            ?: emptyList()
+        // Supplement host DEX with missing methods/fields from duplicate library classes
+        if (dupClasses.isNotEmpty()) {
+            println("Extra lib: supplementing host duplicate class(es) with library methods/fields")
+            supplementHostDex(dupClasses, workDir)
+        }
+
+        val produced = if (nonDupAdded > 0) {
+            tempDexDir.listFiles { _, name -> name.endsWith(".dex") }?.sortedBy { it.name } ?: emptyList()
+        } else emptyList()
         return produced
     }
+
+    /**
+     * Compile duplicate (host-existing) library class files to DEX and merge
+     * missing methods/fields into the host DEX. Handles the case where R8
+     * optimized away methods that the library at runtime expects to exist.
+     */
+    private fun supplementHostDex(dupClassFiles: List<File>, workDir: File) {
+        val tempDir = File(outputDir, "supplement-dex-tmp").apply {
+            deleteRecursively(); mkdirs()
+        }
+        try {
+            val builder = D8Command.builder()
+            builder.minApiLevel = 21
+            for (cls in dupClassFiles) {
+                builder.addClassProgramData(cls.readBytes(), Origin.unknown())
+            }
+            builder.setOutput(tempDir.toPath(), OutputMode.DexIndexed)
+            D8.run(builder.build())
+
+            val allSupplement = mutableMapOf<String, ClassDef>()
+            for (dexFile in tempDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty()) {
+                val store = DexFileFactory.loadDexFile(dexFile.absolutePath, Opcodes.getDefault())
+                for (cls in store.classes) {
+                    allSupplement[cls.type] = cls
+                }
+            }
+            if (allSupplement.isEmpty()) return
+
+            // Pre-filter: load all host classes and only keep supplement classes
+            // that actually have methods/fields not present in the host
+            val hostAll = mutableMapOf<String, ClassDef>()
+            for (hf in workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty()) {
+                val s = DexFileFactory.loadDexFile(hf.absolutePath, Opcodes.getDefault())
+                for (c in s.classes) hostAll[c.type] = c
+            }
+            val supplementMap = mutableMapOf<String, ClassDef>()
+            var skippedNoDiff = 0
+            for ((type, supp) in allSupplement) {
+                val host = hostAll[type]
+                if (host == null) { continue /* already handled by non-dup path */ }
+
+                // 跳过类层次被 R8 改变的类：补充方法引用的父类可能不存在于宿主
+                if (host.superclass != supp.superclass || host.interfaces.toSet() != supp.interfaces.toSet()) {
+                    println("[supplement] Skipping $type (hierarchy changed by R8)")
+                    skippedNoDiff++
+                    continue
+                }
+
+                val needsMethods = supp.methods.any { methodKey(it) !in host.methods.associateBy { methodKey(it) } }
+                val needsFields = supp.fields.any { fieldKey(it) !in host.fields.associateBy { fieldKey(it) } }
+                if (needsMethods || needsFields) {
+                    supplementMap[type] = supp
+                } else {
+                    skippedNoDiff++
+                }
+            }
+            if (skippedNoDiff > 0) println("[supplement] Filtered $skippedNoDiff class(es) with no missing methods/fields")
+            if (supplementMap.isEmpty()) return
+
+            // Build merged supplement classes (host + missing methods/fields from library)
+            val mergedTypes = mutableMapOf<String, ClassDef>()
+            for ((type, supp) in supplementMap) {
+                mergedTypes[type] = mergeClassDefs(hostAll[type]!!, supp)
+            }
+
+            // Determine which host DEX files contain supplemented types
+            data class DexSlot(val file: File, val slot: Int)
+            val affectedDexes = mutableListOf<DexSlot>()
+            for (hf in workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty()) {
+                val store = DexFileFactory.loadDexFile(hf.absolutePath, Opcodes.getDefault())
+                if (store.classes.any { it.type in mergedTypes }) {
+                    val slot = dexSlotNumber(hf.name)
+                    affectedDexes.add(DexSlot(hf, slot))
+                }
+            }
+
+            if (affectedDexes.isEmpty()) {
+                println("[supplement] Warning: no host DEX files contain supplemented types")
+                return
+            }
+
+            // Write all merged supplement classes to a temp DEX file
+            val suppTemp = File(workDir, ".supplement-tmp")
+            try {
+                DexFileFactory.writeDexFile(
+                    suppTemp.absolutePath,
+                    object : org.jf.dexlib2.iface.DexFile {
+                        override fun getClasses() = mergedTypes.values.toMutableSet()
+                        override fun getOpcodes() = Opcodes.getDefault()
+                    }
+                )
+            } catch (e: Exception) {
+                println("[supplement] Warning: can't write supplement DEX: ${e.message}")
+                suppTemp.delete()
+                return
+            }
+
+            // Find highest existing DEX slot
+            val allSlots = (workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty())
+                .mapNotNull { dexSlotNumber(it.name) }
+                .toSet()
+            val maxSlot = allSlots.maxOrNull() ?: 1
+
+            // Rename affected host DEX files to HIGHER slots (past max),
+            // freeing their original slots for the supplement DEX.
+            var nextSlot = maxSlot + 1
+            val lowestOrigSlot = affectedDexes.minOf { it.slot }
+            for (dexInfo in affectedDexes) {
+                val newName = if (nextSlot == 1) "classes.dex" else "classes$nextSlot.dex"
+                val renamed = File(workDir, newName)
+                dexInfo.file.renameTo(renamed)
+                println("[supplement] Relocated ${dexInfo.file.name} → $newName")
+                nextSlot++
+            }
+
+            // Place supplement DEX in the lowest freed slot so it loads FIRST
+            val suppName = if (lowestOrigSlot == 1) "classes.dex" else "classes$lowestOrigSlot.dex"
+            val suppFile = File(workDir, suppName)
+            suppTemp.renameTo(suppFile)
+            println("[supplement] Wrote ${mergedTypes.size} supplemented class(es) as $suppName (loaded before original)")
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    /** Merge missing methods and fields from [supplement] into [host]. */
+    private fun mergeClassDefs(host: ClassDef, supplement: ClassDef): ClassDef {
+        val hostMethodsByKey = host.methods.associateBy { methodKey(it) }
+        val methodsToAdd = supplement.methods.filter { methodKey(it) !in hostMethodsByKey }
+
+        val hostFieldsByKey = host.fields.associateBy { fieldKey(it) }
+        val fieldsToAdd = supplement.fields.filter { fieldKey(it) !in hostFieldsByKey }
+
+        if (methodsToAdd.isEmpty() && fieldsToAdd.isEmpty()) return host
+
+        println("[supplement] ${host.type}: +${methodsToAdd.size} method(s), +${fieldsToAdd.size} field(s)")
+
+        return ImmutableClassDef(
+            host.type,
+            host.accessFlags,
+            host.superclass,
+            host.interfaces,
+            host.sourceFile,
+            host.annotations,
+            host.staticFields.toList() + host.instanceFields.toList() + fieldsToAdd,
+            host.methods.toList() + methodsToAdd,
+        )
+    }
+
+    private fun methodKey(m: org.jf.dexlib2.iface.Method): String =
+        "${m.name}(${m.parameterTypes.joinToString("")})${m.returnType}"
+
+    private fun fieldKey(f: org.jf.dexlib2.iface.Field): String =
+        "${f.name}:${f.type}"
+
+    /** Convert a ClassDef (backed or immutable) to an immutable copy. */
+    private fun toImmutable(cd: ClassDef): ImmutableClassDef = ImmutableClassDef(
+        cd.type, cd.accessFlags, cd.superclass, cd.interfaces,
+        cd.sourceFile, cd.annotations,
+        cd.staticFields.toList() + cd.instanceFields.toList(),
+        cd.methods.toList(),
+    )
 
     /** 过滤不可 dex 化 / 不需要注入的 class entry。 */
     private fun isDexableEntry(name: String): Boolean {
@@ -1054,6 +1278,270 @@ abstract class PatchApkTask : DefaultTask() {
                 val out = File(dest, name).apply { parentFile.mkdirs() }
                 z.getInputStream(e).use { input -> out.outputStream().use { input.copyTo(it) } }
             }
+        }
+    }
+
+    /**
+     * 从 AAR 中提取 res/ 目录的资源文件到目标目录。
+     * 这些资源会合并到 APK 的 res/ 目录中，使库的布局/图片等资源在运行时可用。
+     */
+    private fun extractAarResources(aar: File, resDest: File) {
+        ZipFile(aar).use { z ->
+            z.entries().asSequence().forEach { e ->
+                if (e.isDirectory) return@forEach
+                val name = e.name
+                // 只提取 res/ 开头的资源文件，跳过 res/ 目录本身
+                if (!name.startsWith("res/")) return@forEach
+                val out = File(resDest, name.removePrefix("res/")).apply { parentFile.mkdirs() }
+                z.getInputStream(e).use { input -> out.outputStream().use { input.copyTo(it) } }
+            }
+        }
+    }
+
+    /**
+     * 从 AAR 的 AndroidManifest.xml（纯文本 XML）中提取 package 名称。
+     * AAR 与 APK 不同，Manifest 是文本格式，不是二进制 AXML。
+     */
+    private fun extractPackageFromManifest(manifestData: ByteArray): String? {
+        return try {
+            val text = manifestData.toString(Charsets.UTF_8)
+            // package="xxx" 或 package = "xxx"
+            Regex("""package\s*=\s*"([^"]+)""").find(text)?.groupValues?.getOrNull(1)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 从 AAR 中提取类文件的公共包前缀作为 R class 的包名回退方案。
+     * 选取出现次数最多的非 R/BuildConfig 类的包名。
+     */
+    private fun derivePackageFromAarClasses(file: File): String? {
+        return try {
+            ZipFile(file).use { z ->
+                z.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.endsWith(".class") }
+                    .mapNotNull { entry ->
+                        val name = entry.name.removeSuffix(".class").replace('/', '.')
+                        if (name.contains("R\$") || name.contains("BuildConfig")) null
+                        else {
+                            val dot = name.lastIndexOf('.')
+                            if (dot > 0) name.substring(0, dot) else null
+                        }
+                    }
+                    .groupBy { it }
+                    .maxByOrNull { it.value.size }
+                    ?.key
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 从 AAR/JAR 的 R.txt 生成 R$* 类（如 R$id、R$drawable、R$styleable 等），
+     * 并写入 [outputDir] 对应包路径下。
+     *
+     * 很多 Android AAR 在 classes.jar 中不包含 R class（因为 R.java 在消费方
+     * 构建时由 aapt2 生成），但 R.txt 保留资源 ID 信息。运行时如果库代码引用
+     * R$id 等类会导致 NoClassDefFoundError，这里提前生成好对应的 .class。
+     *
+     * 对于 R.txt 中值为 0x0 的 id 类型资源（即未分配固定值的 ID），
+     * 会分配一个从 0x7F010000 开始的自增 ID。
+     */
+    private fun generateRClassesFromAAR(file: File, existingTypes: Set<String>, outputDir: File): List<File> {
+        val result = mutableListOf<File>()
+        val zipFile: ZipFile = try { ZipFile(file) } catch (_: Exception) { return result }
+
+        zipFile.use { zf ->
+            val rTxtEntry = zf.getEntry("R.txt") ?: return@use result
+            val rTxtLines = try {
+                zf.getInputStream(rTxtEntry).readBytes().toString(Charsets.UTF_8).lines()
+            } catch (_: Exception) { return@use result }
+            if (rTxtLines.isEmpty()) return@use result
+
+            // 提取 package 名：优先从 AndroidManifest.xml，回退到类文件路径
+            val filePackage = run {
+                val manifestEntry = zf.getEntry("AndroidManifest.xml")
+                if (manifestEntry != null) {
+                    try {
+                        val manifestData = zf.getInputStream(manifestEntry).readBytes()
+                        extractPackageFromManifest(manifestData)
+                    } catch (_: Exception) { null }
+                } else null
+            } ?: derivePackageFromAarClasses(file)
+
+            if (filePackage == null) {
+                println("[R-gen] Warning: can't determine package for ${file.name} — skip R class generation")
+                return@use result
+            }
+            // 验证包名看起来是合法的 Java 包名（拒绝 XML 命名空间域名）
+            if (!isValidJavaPackage(filePackage)) {
+                println("[R-gen] Warning: invalid package '$filePackage' from ${file.name} — skip")
+                return@use result
+            }
+
+            val packagePath = filePackage.replace('.', '/')
+
+            // 解析 R.txt
+            val intFields = mutableMapOf<String, MutableMap<String, String>>()
+            val arrayFields = mutableMapOf<String, MutableMap<String, List<String>>>()
+
+            for (line in rTxtLines) {
+                val trimmed = line.trim()
+                if (trimmed.isEmpty()) continue
+                when {
+                    trimmed.startsWith("int[] ") -> {
+                        val rest = trimmed.removePrefix("int[] ").trim()
+                        val firstSpace = rest.indexOf(' ')
+                        if (firstSpace < 0) continue
+                        val innerClass = rest.substring(0, firstSpace)
+                        val fieldDef = rest.substring(firstSpace + 1).trim()
+                        val fieldName = Regex("""\S+""").find(fieldDef)?.value ?: continue
+                        val arrayContent = fieldDef.substringAfter('{').substringBefore('}').trim()
+                        val values = arrayContent.split(',')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                        if (values.isEmpty()) continue
+                        arrayFields.getOrPut(innerClass) { mutableMapOf() }[fieldName] = values
+                    }
+                    trimmed.startsWith("int ") -> {
+                        val rest = trimmed.removePrefix("int ").trim()
+                        val firstSpace = rest.indexOf(' ')
+                        if (firstSpace < 0) continue
+                        val innerClass = rest.substring(0, firstSpace)
+                        val fieldDef = rest.substring(firstSpace + 1).trim()
+                        val thirdSpace = fieldDef.indexOf(' ')
+                        val fieldName = if (thirdSpace < 0) fieldDef else fieldDef.substring(0, thirdSpace)
+                        val fieldValue = if (thirdSpace < 0) "" else fieldDef.substring(thirdSpace + 1).trim()
+                        intFields.getOrPut(innerClass) { mutableMapOf() }[fieldName] = fieldValue
+                    }
+                }
+            }
+
+            if (intFields.isEmpty() && arrayFields.isEmpty()) return@use result
+
+            // 为 0x0 值分配自增 ID
+            var nextId = 0x7F010000
+
+            val allInnerNames = (intFields.keys + arrayFields.keys).toSet()
+            var genCount = 0
+
+            for (innerName in allInnerNames) {
+                val internalName = "$packagePath/R\$$innerName"
+                val typeDesc = "L$internalName;"
+                if (typeDesc in existingTypes) {
+                    println("[R-gen] Skipping $typeDesc (already exists in host)")
+                    continue
+                }
+
+                val fields = intFields[innerName] ?: emptyMap()
+                val arrays = arrayFields[innerName] ?: emptyMap()
+
+                val cw = ClassWriter(0)
+                cw.visit(AsmOpcodes.V1_8, AsmOpcodes.ACC_PUBLIC, internalName, null, "java/lang/Object", null)
+
+                // private constructor
+                val init = cw.visitMethod(AsmOpcodes.ACC_PRIVATE, "<init>", "()V", null, null)
+                init.visitCode()
+                init.visitVarInsn(AsmOpcodes.ALOAD, 0)
+                init.visitMethodInsn(AsmOpcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+                init.visitInsn(AsmOpcodes.RETURN)
+                init.visitMaxs(1, 1)
+                init.visitEnd()
+
+                // int fields
+                for ((fieldName, rawValue) in fields) {
+                    val value = when {
+                        rawValue.isEmpty() || rawValue == "0" || rawValue == "0x0" -> nextId++
+                        rawValue.startsWith("0x") ->
+                            rawValue.removePrefix("0x").toIntOrNull(16) ?: nextId++
+                        else -> rawValue.toIntOrNull() ?: nextId++
+                    }
+                    val fv = cw.visitField(
+                        AsmOpcodes.ACC_PUBLIC or AsmOpcodes.ACC_STATIC or AsmOpcodes.ACC_FINAL,
+                        fieldName, "I", null, value
+                    )
+                    fv.visitEnd()
+                }
+
+                // int[] fields with <clinit>
+                if (arrays.isNotEmpty()) {
+                    for ((fieldName) in arrays) {
+                        val fv = cw.visitField(
+                            AsmOpcodes.ACC_PUBLIC or AsmOpcodes.ACC_STATIC or AsmOpcodes.ACC_FINAL,
+                            fieldName, "[I", null, null
+                        )
+                        fv.visitEnd()
+                    }
+
+                    val clinit = cw.visitMethod(AsmOpcodes.ACC_STATIC, "<clinit>", "()V", null, null)
+                    clinit.visitCode()
+                    for ((fieldName, values) in arrays) {
+                        val intValues = values.map {
+                            it.removePrefix("0x").toIntOrNull(16) ?: 0
+                        }.toIntArray()
+
+                        pushInt(clinit, intValues.size)
+                        clinit.visitIntInsn(AsmOpcodes.NEWARRAY, AsmOpcodes.T_INT)
+                        for ((idx, v) in intValues.withIndex()) {
+                            clinit.visitInsn(AsmOpcodes.DUP)
+                            pushInt(clinit, idx)
+                            pushInt(clinit, v)
+                            clinit.visitInsn(AsmOpcodes.IASTORE)
+                        }
+                        clinit.visitFieldInsn(AsmOpcodes.PUTSTATIC, internalName, fieldName, "[I")
+                    }
+                    clinit.visitInsn(AsmOpcodes.RETURN)
+                    clinit.visitMaxs(4, 0)
+                    clinit.visitEnd()
+                }
+
+                cw.visitEnd()
+
+                val classFile = File(outputDir, "$internalName.class")
+                classFile.parentFile.mkdirs()
+                classFile.writeBytes(cw.toByteArray())
+                result.add(classFile)
+                genCount++
+            }
+
+            if (genCount > 0) {
+                println("[R-gen] Generated $genCount R class(es) for $filePackage from ${file.name}")
+            }
+            result
+        }
+
+        return result
+    }
+
+    /** 验证字符串是否是合法的 Java 包名（拒绝 XML 命名空间域名等）。 */
+    private fun isValidJavaPackage(pkg: String): Boolean {
+        if (pkg.contains("://")) return false
+        if (pkg.count { it == '.' } < 1) return false
+        val segments = pkg.split('.')
+        // 拒绝域名样式的包名（XML 命名空间工件）
+        if (segments.first() in setOf("www", "ww2", "schemas")) return false
+        // 拒绝包含 HTML 标签、空格等
+        if (!segments.all { it.matches(Regex("[a-zA-Z_][a-zA-Z0-9_]*")) }) return false
+        // 拒绝单段过长
+        if (segments.any { it.length > 64 }) return false
+        return true
+    }
+
+    /** ASM 助手：push int 常量到栈，适配各种范围。 */
+    private fun pushInt(mv: org.objectweb.asm.MethodVisitor, value: Int) {
+        when (value) {
+            0 -> mv.visitInsn(AsmOpcodes.ICONST_0)
+            1 -> mv.visitInsn(AsmOpcodes.ICONST_1)
+            2 -> mv.visitInsn(AsmOpcodes.ICONST_2)
+            3 -> mv.visitInsn(AsmOpcodes.ICONST_3)
+            4 -> mv.visitInsn(AsmOpcodes.ICONST_4)
+            5 -> mv.visitInsn(AsmOpcodes.ICONST_5)
+            -1 -> mv.visitInsn(AsmOpcodes.ICONST_M1)
+            in -128..127 -> mv.visitIntInsn(AsmOpcodes.BIPUSH, value)
+            in -32768..32767 -> mv.visitIntInsn(AsmOpcodes.SIPUSH, value)
+            else -> mv.visitLdcInsn(value)
         }
     }
 
@@ -1546,8 +2034,12 @@ abstract class PatchApkTask : DefaultTask() {
                     newEntry.method = entry.method
 
                     if (isReplaced) {
-                        // 使用 workDir 中修改后的版本
                         val diskFile = File(srcDir, name)
+                        if (!diskFile.exists() && name.endsWith(".dex")) {
+                            // DEX 文件已被 supplement 方案重命名到更高槽位，跳过原始 APK 条目。
+                            // 重命名后的文件会在下一轮作为新文件添加。
+                            return@forEach
+                        }
                         val data = if (diskFile.exists() && diskFile.isFile) {
                             diskFile.readBytes()
                         } else {
