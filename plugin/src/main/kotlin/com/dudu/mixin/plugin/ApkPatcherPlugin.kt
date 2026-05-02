@@ -1144,6 +1144,18 @@ abstract class PatchApkTask : DefaultTask() {
             if (skippedNoDiff > 0) println("[supplement] Filtered $skippedNoDiff class(es) with no missing methods/fields")
             if (supplementMap.isEmpty()) return
 
+            // Pass 2: 检查补充方法引用的字段在宿主+其他被补充类中是否存在。
+            // 如果字段所有者也在 supplementMap 中（如 R$id），则字段在补充 DEX 中存在，视为可解析。
+            val toRemove = mutableListOf<String>()
+            for ((type, supp) in supplementMap) {
+                if (hasUnresolvableFieldRefs(supp, hostAll, supplementMap)) {
+                    println("[supplement] Removing $type from supplement (methods reference fields not in host or other supplement classes)")
+                    toRemove.add(type)
+                }
+            }
+            toRemove.forEach { supplementMap.remove(it) }
+            if (supplementMap.isEmpty()) return
+
             // Build merged supplement classes (host + missing methods/fields from library)
             val mergedTypes = mutableMapOf<String, ClassDef>()
             for ((type, supp) in supplementMap) {
@@ -1247,6 +1259,30 @@ abstract class PatchApkTask : DefaultTask() {
         cd.staticFields.toList() + cd.instanceFields.toList(),
         cd.methods.toList(),
     )
+
+    /** Check if any of [supp]'s methods reference fields that don't exist in the host.
+     *  R8 often removes resource ID fields (R$id, etc.) that supplemented methods may reference,
+     *  causing NoSuchFieldError at runtime. Also checks [supplementMap] — if the field owner is
+     *  being supplemented, the field is resolvable at runtime. */
+    private fun hasUnresolvableFieldRefs(supp: ClassDef, hostAll: Map<String, ClassDef>, supplementMap: Map<String, ClassDef>): Boolean {
+        for (method in supp.methods) {
+            val impl = method.implementation ?: continue
+            for (insn in impl.instructions) {
+                if (insn !is ReferenceInstruction) continue
+                val ref = insn.reference
+                if (ref !is org.jf.dexlib2.iface.reference.FieldReference) continue
+                val hostOwner = hostAll[ref.definingClass] ?: continue
+                if (hostOwner.fields.none { it.name == ref.name && it.type == ref.type }) {
+                    // Field not in host — check if the field owner is being supplemented
+                    val suppOwner = supplementMap[ref.definingClass]
+                    if (suppOwner == null || suppOwner.fields.none { it.name == ref.name && it.type == ref.type }) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
 
     /** 过滤不可 dex 化 / 不需要注入的 class entry。 */
     private fun isDexableEntry(name: String): Boolean {
@@ -1430,10 +1466,7 @@ abstract class PatchApkTask : DefaultTask() {
             for (innerName in allInnerNames) {
                 val internalName = "$packagePath/R\$$innerName"
                 val typeDesc = "L$internalName;"
-                if (typeDesc in existingTypes) {
-                    println("[R-gen] Skipping $typeDesc (already exists in host)")
-                    continue
-                }
+                val existsInHost = typeDesc in existingTypes
 
                 val fields = intFields[innerName] ?: emptyMap()
                 val arrays = arrayFields[innerName] ?: emptyMap()
@@ -1504,6 +1537,9 @@ abstract class PatchApkTask : DefaultTask() {
                 classFile.writeBytes(cw.toByteArray())
                 result.add(classFile)
                 genCount++
+                if (existsInHost) {
+                    println("[R-gen] Generated $typeDesc (exists in host but may have additional fields for supplement)")
+                }
             }
 
             if (genCount > 0) {
