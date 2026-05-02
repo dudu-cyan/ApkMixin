@@ -65,7 +65,20 @@
       "Bash(./gradlew :plugin:publishToMavenLocal)",
       "Bash(./gradlew :example:clean :example:generateTargetStubs :example:compileDebugKotlin)",
       "Bash(./gradlew :example:clean :example:generateTargetStubs)",
-      "Bash(./gradlew :example:compileDebugKotlin)"
+      "Bash(./gradlew :example:compileDebugKotlin)",
+      "Bash(./gradlew :example:patchApk)",
+      "Bash(java -cp '/c/Users/cloud_user/AppData/Local/Programs/IntelliJ IDEA/jbr/lib/tools.jar:example/com.tencent.qqlite.apk:example/build/patched-apk/patched-com.tencent.qqlite.apk' -e ' *)",
+      "Bash('/c/Users/cloud_user/AppData/Local/Programs/IntelliJ IDEA/jbr/bin/jar' tf example/com.tencent.qqlite.apk)",
+      "Bash(grep -c \"^res/\\\\|^resources.arsc$\")",
+      "Bash(unzip -l example/com.tencent.qqlite.apk)",
+      "Bash(unzip -l example/build/patched-apk/patched-com.tencent.qqlite.apk)",
+      "Bash(grep -c \"/$\")",
+      "Bash(javac ZipCheck.java -d /tmp/zipcheck)",
+      "Bash(java -cp /tmp/zipcheck ZipCheck \"example/com.tencent.qqlite.apk\" \"example/build/patched-apk/patched-com.tencent.qqlite.apk\")",
+      "Bash(unzip -l \"example/build/patched-apk/unsigned-com.tencent.qqlite.apk\")",
+      "Bash(unzip -l \"example/build/patched-apk/aligned-com.tencent.qqlite.apk\")",
+      "Bash(unzip -l \"example/build/patched-apk/patched-com.tencent.qqlite.apk\")",
+      "Bash(./gradlew :example:clean :example:patchApk)"
     ]
   }
 }

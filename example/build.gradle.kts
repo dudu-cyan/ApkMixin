@@ -47,7 +47,7 @@ apkPatcher {
     targetApk.set(file("com.tencent.qqlite.apk"))
     enableResourceHook.set(false)
 
-    // Stub 范围：只对 com.tencent.qqnt.watch.mainframe 包下的类生成编译期 stub
+    // Stub 范围：只对 com.tencent.qqnt 包下的类生成编译期 stub
     stubIncludePrefixes.add("com.tencent.qqnt.watch.mainframe")
 
     // ───── 第三方库注入 ─────

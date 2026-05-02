@@ -39,6 +39,8 @@ import org.jf.dexlib2.iface.instruction.formats.Instruction3rc
 import org.jf.dexlib2.iface.reference.MethodReference
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction10x
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction11x
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction12x
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction22x
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction3rc
 import org.jf.dexlib2.rewriter.Rewriter
 import org.objectweb.asm.ClassWriter
@@ -505,7 +507,7 @@ abstract class PatchApkTask : DefaultTask() {
 
         // 4. 重打包 APK
         val unsignedApk = File(outputDir, "unsigned-${apkFile.name}")
-        zipApk(workDir, unsignedApk)
+        zipApk(workDir, unsignedApk, apkFile)
 
         // 5. zipalign + 签名
         val toSign = if (signZipAlign.getOrElse(true)) {
@@ -1089,7 +1091,26 @@ abstract class PatchApkTask : DefaultTask() {
 
         val isStaticTarget = (method.accessFlags and org.jf.dexlib2.AccessFlags.STATIC.value) != 0
         val targetParamRegCount = method.parameters.sumOf { wordSize(it.type) }
-        val firstParamReg = originalImpl.registerCount - targetParamRegCount - (if (isStaticTarget) 0 else 1)
+        val totalParamSlots = targetParamRegCount + (if (isStaticTarget) 0 else 1)  // this + explicit params
+
+        // ── 寄存器污染防护 ──
+        // 非 HEAD 注入时，参数寄存器（p0, p1, ...）在方法体执行过程中可能被后续代码覆写
+        // （如 Kotlin inline 函数复用寄存器槽位）。
+        //
+        // 修复方案：
+        //   1. 提升 registerCount（+totalParamSlots），使新参数寄存器落到原始寄存器范围之外，
+        //      原始代码的写操作（寄存器 < originalRegCount）不会触及新参数槽位。
+        //   2. 在方法入口从新参数寄存器复制到旧参数槽位，确保原始字节码（引用旧参数槽位）
+        //      能通过 ART 验证器。
+        //   3. invoke-static 使用新参数寄存器（始终持有原始参数值）。
+        val needsPollutionFix = inj.at.value != "HEAD"
+        val effectiveRegCount = if (needsPollutionFix) {
+            originalImpl.registerCount + totalParamSlots
+        } else {
+            originalImpl.registerCount
+        }
+
+        val firstParamReg = effectiveRegCount - targetParamRegCount - (if (isStaticTarget) 0 else 1)
 
         // 构造 invoke-static：
         //   1) hasReceiver=true → 将 target 实例 this 作为 handler 首参传入
@@ -1111,6 +1132,33 @@ abstract class PatchApkTask : DefaultTask() {
             reg += wordSize(targetParamList[i].type)
         }
 
+        // ── 构建参数初始化指令（仅非 HEAD 注入需要）──
+        // 在方法入口将新参数寄存器值复制到旧参数槽位，使原始字节码（引用旧槽位）
+        // 能正确通过验证器，同时保证 invoke-static 使用的新参数寄存器不被污染。
+        val initInstructions = mutableListOf<Instruction>()
+        if (needsPollutionFix) {
+            val oldBase = originalImpl.registerCount - totalParamSlots
+            val newBase = effectiveRegCount - totalParamSlots
+            val paramTypes = mutableListOf<String>()
+            if (!isStaticTarget) paramTypes.add("L")  // this
+            method.parameters.forEach { paramTypes.add(it.type) }
+
+            var oldReg = oldBase
+            var newReg = newBase
+            for (ptype in paramTypes) {
+                when {
+                    ptype == "J" || ptype == "D" -> {
+                        initInstructions.add(buildMove(Opcode.MOVE_WIDE, oldReg, newReg))
+                        oldReg += 2; newReg += 2
+                    }
+                    else -> {
+                        initInstructions.add(buildMove(Opcode.MOVE_OBJECT, oldReg, newReg))
+                        oldReg += 1; newReg += 1
+                    }
+                }
+            }
+        }
+
         val invokeInstr = buildInvokeStatic(invokeArgRegs, methodRef)
 
         // 计算插入位置
@@ -1123,6 +1171,7 @@ abstract class PatchApkTask : DefaultTask() {
                 newInstructions.addAll(originalList)
             }
             "RETURN", "TAIL" -> {
+                newInstructions.addAll(initInstructions)
                 val returnIdx = originalList.mapIndexedNotNull { i, ins ->
                     if (isReturnOpcode(ins.opcode) || (inj.at.value == "TAIL" && ins.opcode == Opcode.THROW)) i else null
                 }
@@ -1147,7 +1196,7 @@ abstract class PatchApkTask : DefaultTask() {
                     newInstructions.add(invokeInstr)
                     newInstructions.addAll(originalList)
                 } else {
-                    // 默认行为：BEFORE 指令前插入；AFTER：指令后插入
+                    newInstructions.addAll(initInstructions)
                     val shiftAfter = inj.at.shift == "AFTER"
                     originalList.forEachIndexed { i, ins ->
                         val hit = i in targets
@@ -1166,13 +1215,7 @@ abstract class PatchApkTask : DefaultTask() {
             }
         }
 
-        // 确保寄存器数量足以容纳调用所需寄存器（35c 最多 5 个低位寄存器 v0..v15）
-        val maxArgReg = invokeArgRegs.maxOrNull() ?: -1
-        val newRegCount = if (maxArgReg >= 16) {
-            // 需要 3rc（range）；目前我们没有用 range 形式，简单提升 registerCount 不能解决
-            // 但保险起见保持原值
-            originalImpl.registerCount
-        } else originalImpl.registerCount
+        val newRegCount = effectiveRegCount
 
         val newImpl = ImmutableMethodImplementation(
             newRegCount,
@@ -1316,6 +1359,25 @@ abstract class PatchApkTask : DefaultTask() {
                 argRegs.size,
                 methodRef
             )
+        }
+    }
+
+    /**
+     * 根据目标/源寄存器范围选择最优 move 指令格式：
+     *  - 两者均 < 16：12x（move / move-wide / move-object）
+     *  - 否则：22x（move/from16 / move-wide/from16 / move-object/from16）
+     */
+    private fun buildMove(opcode: Opcode, dest: Int, src: Int): Instruction {
+        return if (dest < 16 && src < 16) {
+            ImmutableInstruction12x(opcode, dest, src)
+        } else {
+            val from16Op = when (opcode) {
+                Opcode.MOVE -> Opcode.MOVE_FROM16
+                Opcode.MOVE_WIDE -> Opcode.MOVE_WIDE_FROM16
+                Opcode.MOVE_OBJECT -> Opcode.MOVE_OBJECT_FROM16
+                else -> Opcode.MOVE_OBJECT_FROM16
+            }
+            ImmutableInstruction22x(from16Op, dest, src)
         }
     }
 
@@ -1468,15 +1530,77 @@ abstract class PatchApkTask : DefaultTask() {
         }
     }
 
-    private fun zipApk(srcDir: File, destZipFile: File) {
+    /**
+     * 以原始 APK 为基准重建 ZIP：只替换被插件修改过的条目（DEX、AndroidManifest.xml），
+     * 其余条目（含大小写敏感的文件名）直接从原始 APK 拷贝，避免 Windows 不区分文件名大小写导致资源丢失。
+     */
+    private fun zipApk(srcDir: File, destZipFile: File, originalApk: File) {
+        val crc32 = java.util.zip.CRC32()
         ZipOutputStream(FileOutputStream(destZipFile)).use { zos ->
-            srcDir.walkTopDown().forEach { file ->
-                if (file.isFile) {
-                    val entryName = file.relativeTo(srcDir).path.replace("\\", "/")
-                    zos.putNextEntry(ZipEntry(entryName))
-                    file.inputStream().use { it.copyTo(zos) }
+            // 从原始 APK 拷贝所有条目，只替换被修改的
+            ZipFile(originalApk).use { orig ->
+                orig.entries().asSequence().forEach { entry ->
+                    val name = entry.name
+                    val isReplaced = name.endsWith(".dex") || name == "AndroidManifest.xml"
+                    val newEntry = ZipEntry(name)
+                    newEntry.method = entry.method
+
+                    if (isReplaced) {
+                        // 使用 workDir 中修改后的版本
+                        val diskFile = File(srcDir, name)
+                        val data = if (diskFile.exists() && diskFile.isFile) {
+                            diskFile.readBytes()
+                        } else {
+                            orig.getInputStream(entry).readAllBytes()
+                        }
+                        if (entry.method == ZipEntry.STORED) {
+                            newEntry.size = data.size.toLong()
+                            newEntry.compressedSize = data.size.toLong()
+                            crc32.reset(); crc32.update(data)
+                            newEntry.crc = crc32.value
+                        }
+                        zos.putNextEntry(newEntry)
+                        zos.write(data)
+                    } else {
+                        // 直接从原始 APK 拷贝（保留原始文件名大小写和压缩方式）
+                        if (entry.method == ZipEntry.STORED) {
+                            newEntry.size = entry.size
+                            newEntry.compressedSize = entry.compressedSize
+                            newEntry.crc = entry.crc
+                        }
+                        zos.putNextEntry(newEntry)
+                        orig.getInputStream(entry).use { it.copyTo(zos) }
+                    }
                     zos.closeEntry()
                 }
+            }
+
+            // 补充原始 APK 中没有的新文件（如 injectMixins 新增的 classesN.dex）
+            val originalNames = mutableSetOf<String>().apply {
+                ZipFile(originalApk).use { orig ->
+                    orig.entries().asSequence().forEach { add(it.name) }
+                }
+            }
+            srcDir.walkTopDown().forEach { file ->
+                if (!file.isFile) return@forEach
+                val entryName = file.relativeTo(srcDir).path.replace("\\", "/")
+                if (entryName in originalNames) return@forEach
+                val newEntry = ZipEntry(entryName)
+                newEntry.method = if (entryName.endsWith(".dex") || entryName.startsWith("res/") || entryName == "resources.arsc") {
+                    ZipEntry.STORED
+                } else {
+                    ZipEntry.DEFLATED
+                }
+                val data = file.readBytes()
+                if (newEntry.method == ZipEntry.STORED) {
+                    crc32.reset(); crc32.update(data)
+                    newEntry.crc = crc32.value
+                    newEntry.size = data.size.toLong()
+                    newEntry.compressedSize = data.size.toLong()
+                }
+                zos.putNextEntry(newEntry)
+                zos.write(data)
+                zos.closeEntry()
             }
         }
     }

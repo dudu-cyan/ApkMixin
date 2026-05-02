@@ -2,6 +2,9 @@ package com.dudu.test
 
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.wear.compose.material3.Text
 import com.dudu.mixin.lib.*
 import com.tencent.qqnt.watch.mainframe.MainActivity
 import kotlinx.coroutines.Dispatchers
@@ -14,11 +17,15 @@ import kotlinx.coroutines.runBlocking
 object MainActivityMixin {
 
     @JvmStatic
-    @Inject(method = "onCreate(Landroid/os/Bundle;)V", at = At(AtValues.HEAD))
-    fun onCreateHook(activity: MainActivity, savedInstanceState: Bundle?) {
+    @Inject(method = "onCreate(Landroid/os/Bundle;)V", at = At(AtValues.TAIL))
+    fun onCreateHook(activity: ComponentActivity, savedInstanceState: Bundle?) {
         println(">>> onCreate: activity=$activity bundle=$savedInstanceState")
 
         Toast.makeText(activity, "Hello From ApkMixin", Toast.LENGTH_LONG).show()
+
+        activity.setContent {
+            Text("Hello")
+        }
 /*
         runBlocking(Dispatchers.IO) {
             delay(300)
