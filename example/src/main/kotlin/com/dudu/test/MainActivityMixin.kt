@@ -24,7 +24,7 @@ object MainActivityMixin {
         Toast.makeText(activity, "Hello From ApkMixin", Toast.LENGTH_LONG).show()
 
         activity.setContent {
-            Text("Hello")
+            Text("Hello from Mixin")
         }
 /*
         runBlocking(Dispatchers.IO) {

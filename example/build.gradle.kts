@@ -50,14 +50,26 @@ apkPatcher {
     // Stub 范围：只对 com.tencent.qqnt 包下的类生成编译期 stub
     stubIncludePrefixes.add("com.tencent.qqnt.watch.mainframe")
 
+
+    supplementExcludePrefixes.add("kotlin.text.")
+    supplementExcludePrefixes.add("kotlin.Lazy")
+    supplementExcludePrefixes.add("kotlinx.coroutines.")
+    supplementExcludePrefixes.add("kotlin.jvm")
+    supplementExcludePrefixes.add("kotlin.sequences.")
+    supplementExcludePrefixes.add("kotlin.collections.")
+    supplementExcludePrefixes.add("androidx.arch")
+    supplementExcludePrefixes.add("androidx.lifecycle.Process")
+    supplementExcludePrefixes.add("androidx.collection.")
+
     // ───── 第三方库注入 ─────
     // 默认 autoInjectImplementation=true，上方 dependencies { implementation(...) } 里
     // 声明的 compose / wear-compose / androidx 等都会被自动 dex 化并合并进 patched APK。
     // 想关掉自动注入：autoInjectImplementation.set(false)
     // 想手动追加额外 jar：extraLibraries.from(file("libs/some-lib.jar"))
     // autoInjectExcludeGroups.add("org.jetbrains.kotlin")  // 例如想跳过 kotlin-stdlib
-
+    //autoInjectExcludeGroups.add("org.jetbrains.kotlinx")
     // ───── 代码混淆 ─────
+
     obfuscation {
         enabled.set(true) // 默认关，开了之后会重命名 Mixin 类 + 加密字符串
         renameClasses.set(true)

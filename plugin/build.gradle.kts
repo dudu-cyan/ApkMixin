@@ -9,6 +9,7 @@ version = "1.0.0"
 dependencies {
     // kotlin-dsl applies java-gradle-plugin + adds gradleApi() automatically
     implementation("org.smali:dexlib2:2.5.2")
+    implementation("com.google.guava:guava:31.1-jre")
     implementation("org.smali:smali:2.5.2")
     implementation("com.android.tools:r8:8.2.42")
     implementation("com.android.tools.build:gradle:8.2.2")

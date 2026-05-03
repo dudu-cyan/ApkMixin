@@ -232,6 +232,8 @@ abstract class ApkPatcherExtension @Inject constructor(objects: ObjectFactory) {
     abstract val autoInjectVariant: Property<String>
     /** 自动注入时额外跳过的 group（如 `"org.jetbrains.kotlin"`），防止 stdlib 冲突。 */
     abstract val autoInjectExcludeGroups: ListProperty<String>
+    /** Supplement 替换时跳过的类前缀（`.` 分隔，如 `"kotlin."` 或 `"com.tencent."`）。 */
+    abstract val supplementExcludePrefixes: ListProperty<String>
 
     /** Stub 生成范围：指定前缀列表（如 "com.tencent.qqnt"）。空列表 = 生成所有非系统类的 stub。 */
     abstract val stubIncludePrefixes: ListProperty<String>
@@ -260,6 +262,7 @@ class ApkPatcherPlugin : Plugin<Project>, KotlinCompilerPluginSupportPlugin {
         extension.autoInjectImplementation.convention(true)
         extension.autoInjectVariant.convention("release")
         extension.autoInjectExcludeGroups.convention(emptyList())
+        extension.supplementExcludePrefixes.convention(listOf("kotlin."))
 
         val patchTask = project.tasks.register("patchApk", PatchApkTask::class.java) {
             val task = this
@@ -299,6 +302,7 @@ class ApkPatcherPlugin : Plugin<Project>, KotlinCompilerPluginSupportPlugin {
             task.signV1.set(extension.signing.v1)
             task.signV2.set(extension.signing.v2)
             task.signV3.set(extension.signing.v3)
+            task.supplementExcludePrefixes.set(extension.supplementExcludePrefixes)
             task.signZipAlign.set(extension.signing.zipAlign)
             task.group = "build"
             task.description = "Patches the target APK with Mixins"
@@ -475,6 +479,9 @@ abstract class PatchApkTask : DefaultTask() {
     @get:Input
     abstract val signV3: Property<Boolean>
     @get:Input
+    abstract val supplementExcludePrefixes: ListProperty<String>
+
+    @get:Input
     abstract val signZipAlign: Property<Boolean>
 
     @get:OutputDirectory
@@ -639,7 +646,7 @@ abstract class PatchApkTask : DefaultTask() {
 
         // 2. 第三方库 → DEX，并去重已存在的 type；同时提取 AAR 中的 res/ 资源
         val resMergeDir = File(workDir, "res")
-        val extraLibDexFiles = prepareExtraLibrariesDex(existingTypes, workDir, resMergeDir)
+        val extraLibDexFiles = prepareExtraLibrariesDex(existingTypes, workDir, resMergeDir, supplementExcludePrefixes.get())
         for (extraLibDex in extraLibDexFiles) {
             val nextSlot = nextDexSlotName(workDir)
             extraLibDex.copyTo(File(workDir, nextSlot), overwrite = true)
@@ -987,7 +994,7 @@ abstract class PatchApkTask : DefaultTask() {
      *
      * 支持超过 64K 方法的 multi-dex 产物（classes.dex / classes2.dex / ...）。
      */
-    private fun prepareExtraLibrariesDex(existingTypes: Set<String>, workDir: File, resDir: File? = null): List<File> {
+    private fun prepareExtraLibrariesDex(existingTypes: Set<String>, workDir: File, resDir: File? = null, supplementExcludePrefixes: List<String> = emptyList()): List<File> {
         val files = extraLibraries.files
         if (files.isEmpty()) return emptyList()
 
@@ -1069,21 +1076,164 @@ abstract class PatchApkTask : DefaultTask() {
         }
         val nonDupAdded = added
         println("Extra lib: added $nonDupAdded classes, skipped $skippedHost dup-vs-host, $skippedDup dup-across-libs")
+
+        // Supplement host DEX FIRST so newly-injected classes can reference the added methods.
+        if (dupClasses.isNotEmpty()) {
+            println("Extra lib: supplementing host duplicate class(es) with library methods/fields")
+            supplementHostDex(dupClasses, workDir, supplementExcludePrefixes)
+        }
+
         if (nonDupAdded > 0) {
             builder.setOutput(tempDexDir.toPath(), OutputMode.DexIndexed)
             D8.run(builder.build())
-        }
-
-        // Supplement host DEX with missing methods/fields from duplicate library classes
-        if (dupClasses.isNotEmpty()) {
-            println("Extra lib: supplementing host duplicate class(es) with library methods/fields")
-            supplementHostDex(dupClasses, workDir)
+            filterNewClassesWithUnresolvableHostRefs(tempDexDir, workDir)
         }
 
         val produced = if (nonDupAdded > 0) {
             tempDexDir.listFiles { _, name -> name.endsWith(".dex") }?.sortedBy { it.name } ?: emptyList()
         } else emptyList()
+
+        // Final verification: dump ViewTreeLifecycleOwner from workDir DEX files
+        for (hf in workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty().sortedBy { it.name }) {
+            val s = DexFileFactory.loadDexFile(hf.absolutePath, Opcodes.getDefault())
+            val vtlo = s.classes.find { it.type == "Landroidx/lifecycle/ViewTreeLifecycleOwner;" }
+            if (vtlo != null) {
+                println("[supplement] FINAL: ${hf.name} ViewTreeLifecycleOwner methods(${vtlo.methods.count()}): ${vtlo.methods.joinToString { "${it.name}${it.parameterTypes}" }}")
+            }
+        }
         return produced
+    }
+
+    /** After D8 compiles newly-injected (non-dup) classes, remove classes whose type
+     *  graph (superclass, interface, field type, method signature, annotation) references
+     *  a class that has already been removed. This cascades through the fixpoint loop
+     *  until no more classes need removal. */
+    private fun filterNewClassesWithUnresolvableHostRefs(newDexDir: File, workDir: File) {
+        val hostAll = mutableMapOf<String, ClassDef>()
+        for (hf in workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty()) {
+            val s = DexFileFactory.loadDexFile(hf.absolutePath, Opcodes.getDefault())
+            for (c in s.classes) hostAll[c.type] = c
+        }
+        if (hostAll.isEmpty()) return
+
+        val dexFiles = newDexDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty().sortedBy { it.name }
+        if (dexFiles.isEmpty()) return
+
+        // Load ALL new classes from ALL new DEXs into a single map so cross-DEX
+        // references are visible during fixpoint. D8 may split a single library's
+        // classes across multiple output dexes; if we process each in isolation,
+        // class A in dex1 that references class B in dex2 can't see B's removal.
+        val allNewClasses = mutableMapOf<String, ClassDef>()
+        val dexForType = mutableMapOf<String, File>()
+        for (dexFile in dexFiles) {
+            val store = DexFileFactory.loadDexFile(dexFile.absolutePath, Opcodes.getDefault())
+            for (c in store.classes) {
+                allNewClasses[c.type] = c
+                dexForType[c.type] = dexFile
+            }
+        }
+
+        val toRemove = mutableSetOf<String>()
+        var changed = true
+        while (changed) {
+            changed = false
+            for ((type, cls) in allNewClasses) {
+                if (type in toRemove) continue
+                val reason = getUnresolvableReason(cls, hostAll, allNewClasses, toRemove)
+                if (reason != null) {
+                    println("[extra-lib] Skipping $type: $reason")
+                    toRemove.add(type)
+                    changed = true
+                }
+            }
+        }
+
+        if (toRemove.isNotEmpty()) {
+            println("[extra-lib] Filtered ${toRemove.size} class(es) with unresolvable <clinit> references")
+            // Rewrite each DEX without its removed classes
+            val classesByDex = allNewClasses.entries
+                .filter { it.key !in toRemove }
+                .groupBy { dexForType[it.key]!! }
+            for ((dexFile, entries) in classesByDex) {
+                try {
+                    DexFileFactory.writeDexFile(
+                        dexFile.absolutePath,
+                        object : org.jf.dexlib2.iface.DexFile {
+                            override fun getClasses() = entries.map { it.value }.toMutableSet()
+                            override fun getOpcodes() = Opcodes.getDefault()
+                        }
+                    )
+                } catch (e: Exception) {
+                    println("[extra-lib] Warning: could not rewrite filtered DEX ${dexFile.name}: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /** Returns a reason string if [cls] cannot be safely loaded, or null if it's OK.
+     *  Checks the type graph cascade AND instruction-level method/field references:
+     *  if a method/field referenced in code does not exist in the host (or other new
+     *  classes), the class would cause NoSuchMethodError / NoSuchFieldError at runtime
+     *  and should be removed early with a clear diagnostic. */
+    private fun getUnresolvableReason(
+        cls: ClassDef,
+        hostAll: Map<String, ClassDef>,
+        newClasses: Map<String, ClassDef>,
+        removed: Set<String>,
+    ): String? {
+        cls.superclass?.let { if (it in removed) return "superclass $it was removed" }
+        for (iface in cls.interfaces) if (iface in removed) return "interface $iface was removed"
+        for (f in cls.fields) if (f.type in removed) return "field ${f.name}: ${f.type} targets removed class"
+        for (m in cls.methods) {
+            if (m.returnType in removed) return "${m.name}: return type ${m.returnType} was removed"
+            for (pt in m.parameterTypes) if (pt in removed) return "${m.name}: param type $pt was removed"
+        }
+        for (ann in cls.annotations) if (ann.type in removed) return "annotation @${ann.type} was removed"
+
+        // Instruction-level method/field reference checks: warn (but do NOT remove)
+        // about methods/fields that don't exist in host or other new classes.
+        // Type-level checks above are fatal (NoClassDefFoundError at class-load);
+        // instruction-level issues cause NoSuchMethodError only if that code path
+        // executes, so removal would be too aggressive for dead-code paths.
+        for (m in cls.methods) {
+            val impl = m.implementation ?: continue
+            for (insn in impl.instructions) {
+                if (insn !is ReferenceInstruction) continue
+                val ref = insn.reference
+                when (ref) {
+                    is org.jf.dexlib2.iface.reference.MethodReference -> {
+                        val owner = hostAll[ref.definingClass] ?: newClasses[ref.definingClass]
+                        if (owner == null) {
+                            println("[extra-lib] Warning: ${cls.type} calls ${ref.definingClass}.${ref.name} — defining class not found, may cause NoSuchMethodError at runtime")
+                            continue
+                        }
+                        if (owner.type in removed) continue
+                        val refKey = "${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType}"
+                        if (owner.methods.toList().none { methodKey(it) == refKey }) {
+                            val hint = if (hostAll.containsKey(ref.definingClass)) {
+                                " (host class exists but method was likely R8-optimized away — add the library containing ${ref.definingClass} to extraLibraries)"
+                            } else ""
+                            println("[extra-lib] Warning: ${cls.type} calls ${ref.definingClass}.${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType} which does not exist$hint")
+                        }
+                    }
+                    is org.jf.dexlib2.iface.reference.FieldReference -> {
+                        val owner = hostAll[ref.definingClass] ?: newClasses[ref.definingClass]
+                        if (owner == null) {
+                            println("[extra-lib] Warning: ${cls.type} references field ${ref.definingClass}.${ref.name} — defining class not found")
+                            continue
+                        }
+                        if (owner.type in removed) continue
+                        if (owner.fields.toList().none { it.name == ref.name && it.type == ref.type }) {
+                            val hint = if (hostAll.containsKey(ref.definingClass)) {
+                                " (host class exists but field was likely R8-optimized away — add the library containing ${ref.definingClass} to extraLibraries)"
+                            } else ""
+                            println("[extra-lib] Warning: ${cls.type} references field ${ref.definingClass}.${ref.name}:${ref.type} which does not exist$hint")
+                        }
+                    }
+                }
+            }
+        }
+        return null
     }
 
     /**
@@ -1091,7 +1241,7 @@ abstract class PatchApkTask : DefaultTask() {
      * missing methods/fields into the host DEX. Handles the case where R8
      * optimized away methods that the library at runtime expects to exist.
      */
-    private fun supplementHostDex(dupClassFiles: List<File>, workDir: File) {
+    private fun supplementHostDex(dupClassFiles: List<File>, workDir: File, excludePrefixes: List<String> = emptyList()) {
         val tempDir = File(outputDir, "supplement-dex-tmp").apply {
             deleteRecursively(); mkdirs()
         }
@@ -1120,137 +1270,213 @@ abstract class PatchApkTask : DefaultTask() {
                 val s = DexFileFactory.loadDexFile(hf.absolutePath, Opcodes.getDefault())
                 for (c in s.classes) hostAll[c.type] = c
             }
+            // Replace host classes with library versions directly — no surgical merging.
+            // Skip classes whose DEX type matches any excludePrefixes (e.g. "kotlin." to
+            // protect stdlib internals whose visibility may differ from the host's version,
+            // causing IllegalAccessError at runtime).
+            val excludePatterns = excludePrefixes.map { it.replace('.', '/') }
             val supplementMap = mutableMapOf<String, ClassDef>()
-            var skippedNoDiff = 0
+            var skippedExcluded = 0
             for ((type, supp) in allSupplement) {
                 val host = hostAll[type]
                 if (host == null) { continue /* already handled by non-dup path */ }
-
-                // 跳过类层次被 R8 改变的类：补充方法引用的父类可能不存在于宿主
-                if (host.superclass != supp.superclass || host.interfaces.toSet() != supp.interfaces.toSet()) {
-                    println("[supplement] Skipping $type (hierarchy changed by R8)")
-                    skippedNoDiff++
+                if (excludePatterns.any { type.startsWith("L$it") }) {
+                    skippedExcluded++
                     continue
                 }
-
-                val needsMethods = supp.methods.any { methodKey(it) !in host.methods.associateBy { methodKey(it) } }
-                val needsFields = supp.fields.any { fieldKey(it) !in host.fields.associateBy { fieldKey(it) } }
-                if (needsMethods || needsFields) {
-                    supplementMap[type] = supp
-                } else {
-                    skippedNoDiff++
-                }
+                supplementMap[type] = supp
             }
-            if (skippedNoDiff > 0) println("[supplement] Filtered $skippedNoDiff class(es) with no missing methods/fields")
+            if (skippedExcluded > 0) println("[supplement] Skipped $skippedExcluded class(es) matching exclude prefixes: $excludePrefixes")
+            println("[supplement] Replacing ${supplementMap.size} host class(es) with library versions")
+
             if (supplementMap.isEmpty()) return
 
-            // Pass 2: 检查补充方法引用的字段在宿主+其他被补充类中是否存在。
-            // 如果字段所有者也在 supplementMap 中（如 R$id），则字段在补充 DEX 中存在，视为可解析。
-            val toRemove = mutableListOf<String>()
-            for ((type, supp) in supplementMap) {
-                if (hasUnresolvableFieldRefs(supp, hostAll, supplementMap)) {
-                    println("[supplement] Removing $type from supplement (methods reference fields not in host or other supplement classes)")
-                    toRemove.add(type)
-                }
-            }
-            toRemove.forEach { supplementMap.remove(it) }
-            if (supplementMap.isEmpty()) return
-
-            // Build merged supplement classes (host + missing methods/fields from library)
-            val mergedTypes = mutableMapOf<String, ClassDef>()
-            for ((type, supp) in supplementMap) {
-                mergedTypes[type] = mergeClassDefs(hostAll[type]!!, supp)
-            }
-
-            // Determine which host DEX files contain supplemented types
-            data class DexSlot(val file: File, val slot: Int)
-            val affectedDexes = mutableListOf<DexSlot>()
-            for (hf in workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty()) {
-                val store = DexFileFactory.loadDexFile(hf.absolutePath, Opcodes.getDefault())
-                if (store.classes.any { it.type in mergedTypes }) {
-                    val slot = dexSlotNumber(hf.name)
-                    affectedDexes.add(DexSlot(hf, slot))
-                }
-            }
-
-            if (affectedDexes.isEmpty()) {
-                println("[supplement] Warning: no host DEX files contain supplemented types")
-                return
-            }
-
-            // Write all merged supplement classes to a temp DEX file
-            val suppTemp = File(workDir, ".supplement-tmp")
-            try {
-                DexFileFactory.writeDexFile(
-                    suppTemp.absolutePath,
-                    object : org.jf.dexlib2.iface.DexFile {
-                        override fun getClasses() = mergedTypes.values.toMutableSet()
-                        override fun getOpcodes() = Opcodes.getDefault()
+            // Fixpoint removal: remove supplement classes whose methods/fields reference
+            // types not resolvable in the host or remaining supplement classes.
+            var changed = true
+            while (changed) {
+                changed = false
+                val toRemove = mutableListOf<String>()
+                for ((type, supp) in supplementMap) {
+                    val host = hostAll[type]!!
+                    val fieldReason = getUnresolvableFieldReason(supp, host, hostAll, supplementMap)
+                    if (fieldReason != null) {
+                        println("[supplement] Removing $type: $fieldReason")
+                        toRemove.add(type)
+                    } else {
+                        val methodReason = getUnresolvableMethodReason(supp, host, hostAll, supplementMap)
+                        if (methodReason != null) {
+                            println("[supplement] Removing $type: $methodReason")
+                            toRemove.add(type)
+                        }
                     }
-                )
-            } catch (e: Exception) {
-                println("[supplement] Warning: can't write supplement DEX: ${e.message}")
-                suppTemp.delete()
-                return
+                }
+                if (toRemove.isNotEmpty()) {
+                    changed = true
+                    toRemove.forEach { supplementMap.remove(it) }
+                }
+            }
+            if (supplementMap.isEmpty()) return
+
+            // Build full class pool: host classes, with supplement replacing matching types.
+            // Both are DexBackedClassDef (loaded from DEX) — no solo-write workaround needed.
+            val allClassDefs = mutableMapOf<String, ClassDef>()
+            for ((type, cls) in hostAll) {
+                allClassDefs[type] = supplementMap[type] ?: cls
             }
 
-            // Find highest existing DEX slot
-            val allSlots = (workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty())
-                .mapNotNull { dexSlotNumber(it.name) }
-                .toSet()
-            val maxSlot = allSlots.maxOrNull() ?: 1
+            // Count ALL method references per class: defined methods + external method
+            // references from instructions (both consume method_ids slots in DEX).
+            // Using only defined-method count underestimates total method_ids, causing
+            // "Unsigned short value out of range" when writing.
+            data class ClassWeight(val type: String, val methodRefCount: Int)
+            val weights = allClassDefs.map { (type, cls) ->
+                ClassWeight(type, countAllMethodRefs(cls))
+            }.sortedByDescending { it.methodRefCount }
+            val totalDefinedMethods = allClassDefs.values.sumOf { it.methods.toList().count() }
+            val totalMethodRefs = weights.sumOf { it.methodRefCount }
+            println("[supplement] Total: ${weights.size} classes, $totalDefinedMethods defined methods, $totalMethodRefs unique method-refs-per-class")
 
-            // Rename affected host DEX files to HIGHER slots (past max),
-            // freeing their original slots for the supplement DEX.
-            var nextSlot = maxSlot + 1
-            val lowestOrigSlot = affectedDexes.minOf { it.slot }
-            for (dexInfo in affectedDexes) {
-                val newName = if (nextSlot == 1) "classes.dex" else "classes$nextSlot.dex"
-                val renamed = File(workDir, newName)
-                dexInfo.file.renameTo(renamed)
-                println("[supplement] Relocated ${dexInfo.file.name} → $newName")
-                nextSlot++
+            // Phase 1: greedy best-fit bin-packing using per-class method-ref count (overestimate
+            // of contribution since cross-class external refs overlap). Conservative limit 55000.
+            // Use 55000 for packing (overestimate of per-class method refs — cross-class
+            // external ref overlap means actual union is smaller than sum of per-class counts)
+            val PACK_LIMIT = 55000
+            data class DexBin(val classes: MutableList<String> = mutableListOf(), var refCount: Int = 0)
+            val bins = mutableListOf<DexBin>()
+
+            for (cw in weights) {
+                var bestBin: DexBin? = null
+                for (bin in bins) {
+                    if (bin.refCount + cw.methodRefCount <= PACK_LIMIT) {
+                        if (bestBin == null || bin.refCount > bestBin.refCount) {
+                            bestBin = bin
+                        }
+                    }
+                }
+                if (bestBin != null) {
+                    bestBin.classes.add(cw.type)
+                    bestBin.refCount += cw.methodRefCount
+                } else {
+                    bins.add(DexBin(mutableListOf(cw.type), cw.methodRefCount))
+                }
             }
 
-            // Place supplement DEX in the lowest freed slot so it loads FIRST
-            val suppName = if (lowestOrigSlot == 1) "classes.dex" else "classes$lowestOrigSlot.dex"
-            val suppFile = File(workDir, suppName)
-            suppTemp.renameTo(suppFile)
-            println("[supplement] Wrote ${mergedTypes.size} supplemented class(es) as $suppName (loaded before original)")
+            // Phase 2: verify each bin's actual unique method_ids. If a bin exceeds
+            // 64000, split it in half (by ref count) until all bins are safe.
+            val VERIFY_LIMIT = 64000
+            val finalBins = mutableListOf<DexBin>()
+            for (bin in bins) {
+                val queue = mutableListOf(bin)
+                while (queue.isNotEmpty()) {
+                    val b = queue.removeAt(0)
+                    val actualIds = uniqueMethodIdsForClasses(b.classes.map { allClassDefs[it]!! })
+                    if (actualIds <= VERIFY_LIMIT || b.classes.size <= 1) {
+                        if (actualIds > VERIFY_LIMIT) {
+                            println("[supplement] Warning: single class ${b.classes.singleOrNull() ?: "?"} has $actualIds method_ids (exceeds limit)")
+                        }
+                        finalBins.add(b)
+                    } else {
+                        println("[supplement] Splitting bin (${b.classes.size} classes, $actualIds unique method_ids > $VERIFY_LIMIT)")
+                        val sorted = b.classes.sortedByDescending { t ->
+                            weights.find { it.type == t }?.methodRefCount ?: 0
+                        }
+                        val half = sorted.size / 2
+                        queue.add(DexBin().apply { sorted.take(half).forEach { classes.add(it) } })
+                        queue.add(DexBin().apply { sorted.drop(half).forEach { classes.add(it) } })
+                    }
+                }
+            }
+            println("[supplement] Final bins: ${finalBins.size}, method_ids per bin: ${finalBins.joinToString { uniqueMethodIdsForClasses(it.classes.map { allClassDefs[it]!! }).toString() }}")
+
+            // Remove old DEX files
+            val oldDexFiles = workDir.listFiles { _, n -> n.endsWith(".dex") }.orEmpty()
+            for (f in oldDexFiles) f.delete()
+
+            // Write new DEX files
+            var writeErrors = 0
+            for ((i, bin) in finalBins.withIndex()) {
+                val dexName = if (i == 0) "classes.dex" else "classes${i + 1}.dex"
+                val dexFile = File(workDir, dexName)
+                val binTypes = bin.classes.toHashSet()
+                val binClasses = bin.classes.map { allClassDefs[it]!! }.toSet()
+                try {
+                    val actualIds = uniqueMethodIdsForClasses(binClasses)
+                    println("[supplement] Writing $dexName: ${bin.classes.size} classes, $actualIds unique method_ids")
+                    DexFileFactory.writeDexFile(
+                        dexFile.absolutePath,
+                        object : org.jf.dexlib2.iface.DexFile {
+                            override fun getClasses() = binClasses
+                            override fun getOpcodes() = Opcodes.getDefault()
+                        }
+                    )
+
+                    // Verify replaced types in this bin
+                    val verifyStore = DexFileFactory.loadDexFile(dexFile.absolutePath, Opcodes.getDefault())
+                    for (type in binTypes.intersect(supplementMap.keys)) {
+                        val written = verifyStore.classes.find { it.type == type }
+                        if (written != null) {
+                            val mCount = written.methods.toList().count()
+                            val expected = supplementMap[type]!!.methods.toList().count()
+                            if (mCount != expected) {
+                                println("[supplement] ERROR: $type write mismatch — methods: ${mCount}/${expected}")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    writeErrors++
+                    println("[supplement] Error writing $dexName: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+            if (writeErrors > 0) {
+                println("[supplement] Warning: $writeErrors DEX file(s) failed to write")
+            }
         } finally {
             tempDir.deleteRecursively()
         }
     }
 
-    /** Merge missing methods and fields from [supplement] into [host]. */
-    private fun mergeClassDefs(host: ClassDef, supplement: ClassDef): ClassDef {
-        val hostMethodsByKey = host.methods.associateBy { methodKey(it) }
-        val methodsToAdd = supplement.methods.filter { methodKey(it) !in hostMethodsByKey }
-
-        val hostFieldsByKey = host.fields.associateBy { fieldKey(it) }
-        val fieldsToAdd = supplement.fields.filter { fieldKey(it) !in hostFieldsByKey }
-
-        if (methodsToAdd.isEmpty() && fieldsToAdd.isEmpty()) return host
-
-        println("[supplement] ${host.type}: +${methodsToAdd.size} method(s), +${fieldsToAdd.size} field(s)")
-
-        return ImmutableClassDef(
-            host.type,
-            host.accessFlags,
-            host.superclass,
-            host.interfaces,
-            host.sourceFile,
-            host.annotations,
-            host.staticFields.toList() + host.instanceFields.toList() + fieldsToAdd,
-            host.methods.toList() + methodsToAdd,
-        )
-    }
-
-    private fun methodKey(m: org.jf.dexlib2.iface.Method): String =
+    private fun methodKey(m: org.jf.dexlib2.iface.reference.MethodReference): String =
         "${m.name}(${m.parameterTypes.joinToString("")})${m.returnType}"
 
-    private fun fieldKey(f: org.jf.dexlib2.iface.Field): String =
-        "${f.name}:${f.type}"
+
+    /** Count ALL method_id entries a class contributes: defined methods + external
+     *  method references from instructions. Each unique (definingClass, name, params,
+     *  returnType) tuple occupies one method_ids slot in the DEX, and the sum across
+     *  classes in a DEX cannot exceed 65535. */
+    private fun countAllMethodRefs(cls: ClassDef): Int {
+        val refs = mutableSetOf<String>()
+        for (method in cls.methods) {
+            refs.add("${cls.type}->${methodKey(method)}")
+            val impl = method.implementation ?: continue
+            for (insn in impl.instructions) {
+                if (insn is ReferenceInstruction && insn.reference is MethodReference) {
+                    val ref = insn.reference as MethodReference
+                    refs.add("${ref.definingClass}->${methodKey(ref)}")
+                }
+            }
+        }
+        return refs.size
+    }
+
+    /** Compute the actual unique method_ids count for a set of classes (union). */
+    private fun uniqueMethodIdsForClasses(classes: Collection<ClassDef>): Int {
+        val ids = mutableSetOf<String>()
+        for (cls in classes) {
+            for (method in cls.methods) {
+                ids.add("${cls.type}->${methodKey(method)}")
+                val impl = method.implementation ?: continue
+                for (insn in impl.instructions) {
+                    if (insn is ReferenceInstruction && insn.reference is MethodReference) {
+                        val ref = insn.reference as MethodReference
+                        ids.add("${ref.definingClass}->${methodKey(ref)}")
+                    }
+                }
+            }
+        }
+        return ids.size
+    }
 
     /** Convert a ClassDef (backed or immutable) to an immutable copy. */
     private fun toImmutable(cd: ClassDef): ImmutableClassDef = ImmutableClassDef(
@@ -1260,12 +1486,12 @@ abstract class PatchApkTask : DefaultTask() {
         cd.methods.toList(),
     )
 
-    /** Check if any of [supp]'s methods reference fields that don't exist in the host.
-     *  R8 often removes resource ID fields (R$id, etc.) that supplemented methods may reference,
-     *  causing NoSuchFieldError at runtime. Also checks [supplementMap] — if the field owner is
-     *  being supplemented, the field is resolvable at runtime. */
-    private fun hasUnresolvableFieldRefs(supp: ClassDef, hostAll: Map<String, ClassDef>, supplementMap: Map<String, ClassDef>): Boolean {
+    /** Returns a reason string if any NEW method from [supp] references a field that
+     *  doesn't exist in host or other supplement classes, else null. */
+    private fun getUnresolvableFieldReason(supp: ClassDef, host: ClassDef, hostAll: Map<String, ClassDef>, supplementMap: Map<String, ClassDef>): String? {
+        val hostMethodKeys = host.methods.map { methodKey(it) }.toHashSet()
         for (method in supp.methods) {
+            if (methodKey(method) in hostMethodKeys) continue
             val impl = method.implementation ?: continue
             for (insn in impl.instructions) {
                 if (insn !is ReferenceInstruction) continue
@@ -1273,15 +1499,38 @@ abstract class PatchApkTask : DefaultTask() {
                 if (ref !is org.jf.dexlib2.iface.reference.FieldReference) continue
                 val hostOwner = hostAll[ref.definingClass] ?: continue
                 if (hostOwner.fields.none { it.name == ref.name && it.type == ref.type }) {
-                    // Field not in host — check if the field owner is being supplemented
                     val suppOwner = supplementMap[ref.definingClass]
                     if (suppOwner == null || suppOwner.fields.none { it.name == ref.name && it.type == ref.type }) {
-                        return true
+                        return "new method ${method.name} references field ${ref.definingClass}.${ref.name}:${ref.type} which does not exist in host or supplement"
                     }
                 }
             }
         }
-        return false
+        return null
+    }
+
+    /** Returns a reason string if any NEW method from [supp] references a method that
+     *  doesn't exist in host or other supplement classes, else null. */
+    private fun getUnresolvableMethodReason(supp: ClassDef, host: ClassDef, hostAll: Map<String, ClassDef>, supplementMap: Map<String, ClassDef>): String? {
+        val hostMethodKeys = host.methods.map { methodKey(it) }.toHashSet()
+        for (method in supp.methods) {
+            if (methodKey(method) in hostMethodKeys) continue
+            val impl = method.implementation ?: continue
+            for (insn in impl.instructions) {
+                if (insn !is ReferenceInstruction) continue
+                val ref = insn.reference
+                if (ref !is org.jf.dexlib2.iface.reference.MethodReference) continue
+                val hostOwner = hostAll[ref.definingClass] ?: continue
+                val refKey = "${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType}"
+                if (hostOwner.methods.none { methodKey(it) == refKey }) {
+                    val suppOwner = supplementMap[ref.definingClass]
+                    if (suppOwner == null || suppOwner.methods.none { methodKey(it) == refKey }) {
+                        return "new method ${method.name} references ${ref.definingClass}.$refKey which does not exist in host or supplement"
+                    }
+                }
+            }
+        }
+        return null
     }
 
     /** 过滤不可 dex 化 / 不需要注入的 class entry。 */
